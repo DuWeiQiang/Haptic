@@ -1,0 +1,62 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticMaster", "Haptic\Haptic.vcxproj", "{78894AF6-8137-4445-9AFA-08342CC5E4B8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0} = {A9F01342-5463-4634-B1F9-BF98CD5591B0}
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18} = {71AF75A0-52B6-4C1B-8E56-CB31C6741A18}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CHAI3D", "..\external\chai3d-3.2.0\CHAI3D-VS2015.vcxproj", "{A9F01342-5463-4634-B1F9-BF98CD5591B0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "glfw", "..\external\chai3d-3.2.0\extras\GLFW\glfw-VS2015.vcxproj", "{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticSlaver", "HapticSlaver\HapticSlaver.vcxproj", "{9F84883B-331F-463F-B5E8-725DEB052B72}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.ActiveCfg = Debug|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.Build.0 = Debug|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.ActiveCfg = Debug|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.Build.0 = Debug|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.ActiveCfg = Release|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.Build.0 = Release|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.ActiveCfg = Release|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.Build.0 = Release|Win32
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Debug|x64.ActiveCfg = Debug|x64
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Debug|x64.Build.0 = Debug|x64
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Debug|x86.ActiveCfg = Debug|Win32
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Debug|x86.Build.0 = Debug|Win32
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Release|x64.ActiveCfg = Release|x64
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Release|x64.Build.0 = Release|x64
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Release|x86.ActiveCfg = Release|Win32
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0}.Release|x86.Build.0 = Release|Win32
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Debug|x64.ActiveCfg = Debug|x64
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Debug|x64.Build.0 = Debug|x64
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Debug|x86.ActiveCfg = Debug|Win32
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Debug|x86.Build.0 = Debug|Win32
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Release|x64.ActiveCfg = Release|x64
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Release|x64.Build.0 = Release|x64
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Release|x86.ActiveCfg = Release|Win32
+		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18}.Release|x86.Build.0 = Release|Win32
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x64.ActiveCfg = Debug|x64
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x64.Build.0 = Debug|x64
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x86.ActiveCfg = Debug|Win32
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x86.Build.0 = Debug|Win32
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Release|x64.ActiveCfg = Release|x64
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Release|x64.Build.0 = Release|x64
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Release|x86.ActiveCfg = Release|Win32
+		{9F84883B-331F-463F-B5E8-725DEB052B72}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
