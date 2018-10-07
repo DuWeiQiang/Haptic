@@ -80,6 +80,9 @@ cHapticDeviceHandler* handler;
 // a pointer to the current haptic device
 cGenericHapticDevicePtr hapticDevice;
 
+// a virtual tool representing the haptic device in the scene
+cToolCursor* tool;
+
 // a flag to indicate if the haptic simulation currently running
 bool simulationRunning = false;
 
@@ -94,12 +97,12 @@ cThread* hapticsThread;
 
 WORD sockVersion;
 WSADATA data;
-Sender *sender;
-Receiver *receiver;
+Sender<hapticMessageM2S> *sender;
+Receiver<hapticMessageS2M> *receiver;
 threadsafe_queue<hapticMessageM2S> *forceQ;
 threadsafe_queue<hapticMessageS2M> *commandQ;
 SOCKET sclient;
-
+LARGE_INTEGER cpuFreq;
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -134,8 +137,8 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
-
-	std::cout << std::endl;
+	std::cout << sizeof(hapticMessageM2S) << "" << sizeof(hapticMessageS2M);
+	std::cout << std::endl; 
 	std::cout << "-----------------------------------" << std::endl;
 	std::cout << "CHAI3D" << std::endl;
 	std::cout << "Demo: 01-mydevice" << std::endl;
@@ -151,10 +154,10 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// socket communication setup
 	//--------------------------------------------------------------------------
-
+	QueryPerformanceFrequency(&cpuFreq);
 	sockVersion = MAKEWORD(2, 2);
-	sender = new Sender();
-	receiver = new Receiver();
+	sender = new Sender<hapticMessageM2S>();
+	receiver = new Receiver<hapticMessageS2M>();
 	forceQ = new threadsafe_queue<hapticMessageM2S>();
 	commandQ = new threadsafe_queue<hapticMessageS2M>();
 
@@ -225,18 +228,36 @@ int main(int argc, char* argv[])
 	// get a handle to the first haptic device
 	handler->getDevice(hapticDevice, 0);
 
-	// open a connection to haptic device
-	hapticDevice->open();
+	// create a tool (cursor) and insert into the world
+	tool = new cToolCursor(nullptr);
 
-	// calibrate device (if necessary)
-	hapticDevice->calibrate();
+	// connect the haptic device to the tool
+	tool->setHapticDevice(hapticDevice);
 
-	// retrieve information about the current haptic device
-	cHapticDeviceInfo info = hapticDevice->getSpecifications();
+	// map the physical workspace of the haptic device to a larger virtual workspace.
+	tool->setWorkspaceRadius(1.0);
 
-	// if the device has a gripper, enable the gripper to simulate a user switch
-	hapticDevice->setEnableGripperUserSwitch(true);
+	// define the radius of the tool (sphere)
+	double toolRadius = 0.05;
 
+	// define a radius for the tool
+	tool->setRadius(toolRadius);
+
+	// hide the device sphere. only show proxy.
+	tool->setShowContactPoints(true, true);
+
+	// enable if objects in the scene are going to rotate of translate
+	// or possibly collide against the tool. If the environment
+	// is entirely static, you can set this parameter to "false"
+	tool->enableDynamicObjects(true);
+
+	// haptic forces are enabled only if small forces are first sent to the device;
+	// this mode avoids the force spike that occurs when the application starts when 
+	// the tool is located inside an object for instance. 
+	tool->setWaitForSmallForce(true);
+
+	// start the haptic tool
+	tool->start();
 
 	//--------------------------------------------------------------------------
 	// START SIMULATION
@@ -274,7 +295,8 @@ void close(void)
 	while (!simulationFinished) { cSleepMs(100); }
 
 	// close haptic device
-	hapticDevice->close();
+	//hapticDevice->close();
+	tool->stop();
 
 	// delete resources
 	delete hapticsThread;
@@ -285,7 +307,7 @@ void close(void)
 int counter = 0;
 void updateHaptics(void)
 {
-	// simulation in now running
+	// simulation in nowTimes running
 	simulationRunning = true;
 	simulationFinished = false;
 
@@ -296,29 +318,35 @@ void updateHaptics(void)
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
 
+		// update position and orientation of tool
+		tool->updateFromDevice();
+
 		// read position 
-		cVector3d position;
-		hapticDevice->getPosition(position);
+		cVector3d position = tool->getDeviceLocalPos();
+		//hapticDevice->getPosition(position);
 
 		// read orientation 
-		cMatrix3d rotation;
-		hapticDevice->getRotation(rotation);
+		cMatrix3d rotation = tool->getDeviceLocalRot();
+		//hapticDevice->getRotation(rotation);
 
 		// read gripper position
-		double gripperAngle;
-		hapticDevice->getGripperAngleRad(gripperAngle);
+		double gripperAngle = tool->getGripperAngleRad();
+		//hapticDevice->getGripperAngleRad(gripperAngle);
 
 		// read linear velocity 
-		cVector3d linearVelocity;
-		hapticDevice->getLinearVelocity(linearVelocity);
+		cVector3d linearVelocity = tool->getDeviceLocalLinVel();
+		//hapticDevice->getLinearVelocity(linearVelocity);
 
 		// read angular velocity
-		cVector3d angularVelocity;
-		hapticDevice->getAngularVelocity(angularVelocity);
+		cVector3d angularVelocity = tool->getDeviceLocalAngVel();
+		//hapticDevice->getAngularVelocity(angularVelocity);
 
 		// read gripper angular velocity
-		double gripperAngularVelocity;
-		hapticDevice->getGripperAngularVelocity(gripperAngularVelocity);
+		double gripperAngularVelocity = tool->getGripperAngVel();
+		//hapticDevice->getGripperAngularVelocity(gripperAngularVelocity);
+
+		unsigned int allSwitches = tool->getUserSwitches();
+		//hapticDevice->getUserSwitches(allSwitches);
 
 		// read user-switch status (button 0)
 		bool button0, button1, button2, button3;
@@ -327,10 +355,15 @@ void updateHaptics(void)
 		button2 = false;
 		button3 = false;
 
-		hapticDevice->getUserSwitch(0, button0);
-		hapticDevice->getUserSwitch(1, button1);
-		hapticDevice->getUserSwitch(2, button2);
-		hapticDevice->getUserSwitch(3, button3);
+		button0 = tool->getUserSwitch(0);
+		button1 = tool->getUserSwitch(1);
+		button2 = tool->getUserSwitch(2);
+		button3 = tool->getUserSwitch(3);
+
+		//hapticDevice->getUserSwitch(0, button0);
+		//hapticDevice->getUserSwitch(1, button1);
+		//hapticDevice->getUserSwitch(2, button2);
+		//hapticDevice->getUserSwitch(3, button3);
 
 
 		/////////////////////////////////////////////////////////////////////
@@ -352,16 +385,20 @@ void updateHaptics(void)
 		msgM2S.button1 = button1;
 		msgM2S.button2 = button2;
 		msgM2S.button3 = button3;
+		msgM2S.userSwitches = allSwitches;
+		__int64 curtime;
+		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
+		msgM2S.time = curtime;
+			
 
 		/////////////////////////////////////////////////////////////////////
 		// push into send queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
-		//counter++;
-		//if (counter == 1000) {
-		//	counter = 0;
-		std::cout << freqCounterHaptics.getFrequency() << std::endl;
-			forceQ->push(msgM2S);
-		//}
+		counter++;
+		if (counter == 1000) {
+			counter = 0;
+		forceQ->push(msgM2S);
+		}
 		/////////////////////////////////////////////////////////////////////
 		// check receive queues.
 		/////////////////////////////////////////////////////////////////////
@@ -373,7 +410,15 @@ void updateHaptics(void)
 				cVector3d torque(msgS2M.torque[0], msgS2M.torque[0], msgS2M.torque[0]);
 				double gripperForce = msgS2M.gripperForce;
 				// send computed force, torque, and gripper force to haptic device	
-				hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
+				//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
+				tool->setDeviceLocalForce(force);
+				tool->setDeviceLocalTorque(torque);
+				tool->setGripperForce(gripperForce);
+				
+				QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
+				forceQ->try_pop(msgM2S);
+				std::cout << "master" << ((double)(curtime - msgM2S.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
+				tool->applyToDevice();
 			}
 		}
 

@@ -1,19 +1,20 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
-#include<WINSOCK2.H>
-#include<STDIO.H>
-#include<iostream>
-#include<string>
+#include <WINSOCK2.H>
+#include <STDIO.H>
+#include <iostream>
+#include <string>
 #include <windows.h>
 #include <process.h>
-#pragma comment(lib, "ws2_32.lib")
-
-
+#include <timeapi.h>
+#pragma comment(lib,"ws2_32.lib")  
+#pragma comment( lib,"winmm.lib" )
 #include <queue>
 #include <mutex>
 #include <memory>
 #include <condition_variable>
-
 struct hapticMessageM2S {
+	__int64 time;
+
 	// position, cVector3d contains 3 double values
 	double position[3];
 
@@ -32,16 +33,19 @@ struct hapticMessageM2S {
 	// gripper angular velocity
 	double gripperAngularVelocity;
 
+	double userSwitches;
+
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
 };
 
+
 struct hapticMessageS2M {
+	__int64 time;
 	double force[3];
 	double torque[3];
 	double gripperForce;
 };
-
 
 template<typename T>
 class threadsafe_queue
@@ -110,7 +114,7 @@ class ThreadX
 public:
 	SOCKET s;
 	int N;
-	threadsafe_queue<hapticMessageM2S> *Q;
+
 	// In C++ you must employ a free (C) function or a static
 	// class member function as the thread entry-point-function.
 	ThreadX() {
@@ -119,7 +123,7 @@ public:
 	static unsigned __stdcall ThreadStaticEntryPoint(void * pThis)
 	{
 		ThreadX * pthX = (ThreadX*)pThis;   // the tricky cast
-		pthX->ThreadEntryPoint();    // now call the true entry-point-function
+		pthX->ThreadEntryPoint();    // nowTimes call the true entry-point-function
 
 									 // A thread terminates automatically if it completes execution,
 									 // or it can terminate itself with a call to _endthread().
@@ -137,47 +141,49 @@ public:
 	virtual ~ThreadX() {};
 };
 
+template<typename T>
 class Sender :public ThreadX
 {
 public:
-	threadsafe_queue<hapticMessageM2S> *Q;
+	threadsafe_queue<T> *Q;
 private:
 	void ThreadEntryPoint() {
 		printf("Sender Thread\n");
 		while (true) {
 			if (!Q->empty()) {
 				//std::cout << "Sender helloworld" << sizeof(hapticMessageM2S) << std::endl;
-				hapticMessageM2S temp;
+				T temp;
 				Q->try_pop(temp);
-				send(s, (char *)&temp, sizeof(hapticMessageM2S), 0);
+				send(s, (char *)&temp, sizeof(T), 0);
 			}
 		}
 	}
 	virtual ~Sender() {};
 };
 
+template<typename T>
 class Receiver :public ThreadX
 {
 public:
-	threadsafe_queue<hapticMessageS2M> *Q;
+	threadsafe_queue<T> *Q;
 private:
 	void ThreadEntryPoint() {
 		printf("Receiver Thread\n");
-		char recData[255];
+		char recData[1000];
 		unsigned int unprocessedPtr = 0;
 		while (true) {
-			int ret = recv(s, recData + unprocessedPtr, 255 - unprocessedPtr, 0);
-			if (ret>0) {			
+			int ret = recv(s, recData + unprocessedPtr, 1000 - unprocessedPtr, 0);
+			if (ret>0) {
 				// we receive some char data and transform it to hapticMessageM2S.
 				unprocessedPtr += ret;
-				
-				unsigned int hapticMsgL = sizeof(hapticMessageS2M);
+
+				unsigned int hapticMsgL = sizeof(T);
 				for (unsigned int i = 0; i < unprocessedPtr / hapticMsgL; i++) {
-					Q->push(*(hapticMessageS2M*)(recData + i* hapticMsgL));
+					Q->push(*(T*)(recData + i* hapticMsgL));
 				}
 				unsigned int processedPtr = (unprocessedPtr / hapticMsgL) * hapticMsgL;
 				unprocessedPtr %= hapticMsgL;
-				
+
 				for (unsigned int i = 0; i < unprocessedPtr; i++) {
 					recData[i] = recData[processedPtr + i];
 				}

@@ -5,13 +5,19 @@
 #include <string>
 #include <windows.h>
 #include <process.h>
+#include <sys/timeb.h>
+#include <timeapi.h> 
 #pragma comment(lib,"ws2_32.lib")  
-
+#pragma comment( lib,"winmm.lib" )
 #include <queue>
 #include <mutex>
 #include <memory>
 #include <condition_variable>
+
+
 struct hapticMessageM2S {
+	__int64 time;
+
 	// position, cVector3d contains 3 double values
 	double position[3];
 
@@ -30,12 +36,15 @@ struct hapticMessageM2S {
 	// gripper angular velocity
 	double gripperAngularVelocity;
 
+	double userSwitches;
+
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
 };
 
 
 struct hapticMessageS2M {
+	__int64 time;
 	double force[3];
 	double torque[3];
 	double gripperForce;
@@ -117,7 +126,7 @@ public:
 	static unsigned __stdcall ThreadStaticEntryPoint(void * pThis)
 	{
 		ThreadX * pthX = (ThreadX*)pThis;   // the tricky cast
-		pthX->ThreadEntryPoint();    // now call the true entry-point-function
+		pthX->ThreadEntryPoint();    // nowTimes call the true entry-point-function
 
 									 // A thread terminates automatically if it completes execution,
 									 // or it can terminate itself with a call to _endthread().
@@ -135,43 +144,45 @@ public:
 	virtual ~ThreadX() {};
 };
 
+template<typename T>
 class Sender :public ThreadX
 {
 public:
-	threadsafe_queue<hapticMessageS2M> *Q;
+	threadsafe_queue<T> *Q;
 private:	
 	void ThreadEntryPoint() {
 		printf("Sender Thread\n");
 		while (true) {
 			if (!Q->empty()) {
 				//std::cout << "Sender helloworld" << sizeof(hapticMessageM2S) << std::endl;
-				hapticMessageS2M temp;
+				T temp;
 				Q->try_pop(temp);
-				send(s, (char *)&temp, sizeof(hapticMessageS2M), 0);
+				send(s, (char *)&temp, sizeof(T), 0);
 			}
 		}
 	}
 	virtual ~Sender() {};
 };
 
+template<typename T>
 class Receiver :public ThreadX
 {
 public:
-	threadsafe_queue<hapticMessageM2S> *Q;
+	threadsafe_queue<T> *Q;
 private:
 	void ThreadEntryPoint() {
 		printf("Receiver Thread\n");
-		char recData[255];
+		char recData[1000];
 		unsigned int unprocessedPtr = 0;
 		while (true) {
-			int ret = recv(s, recData + unprocessedPtr, 255 - unprocessedPtr, 0);
+			int ret = recv(s, recData + unprocessedPtr, 1000 - unprocessedPtr, 0);
 			if (ret>0) {
 				// we receive some char data and transform it to hapticMessageM2S.
 				unprocessedPtr += ret;
 
-				unsigned int hapticMsgL = sizeof(hapticMessageM2S);
+				unsigned int hapticMsgL = sizeof(T);
 				for (unsigned int i = 0; i < unprocessedPtr / hapticMsgL; i++) {
-					Q->push(*(hapticMessageM2S*)(recData + i* hapticMsgL));
+					Q->push(*(T*)(recData + i* hapticMsgL));
 				}
 				unsigned int processedPtr = (unprocessedPtr / hapticMsgL) * hapticMsgL;
 				unprocessedPtr %= hapticMsgL;
@@ -185,101 +196,3 @@ private:
 	virtual ~Receiver() {};
 };
 
-//int main1(int argc, char* argv[])
-//{
-//	//初始化WSA  
-//	WORD sockVersion = MAKEWORD(2, 2);
-//	WSADATA wsaData;
-//	threadsafe_queue<hapticMessageM2S> *forceQ = new threadsafe_queue<hapticMessageM2S>();
-//	threadsafe_queue<hapticMessageM2S> *commandQ = new threadsafe_queue<hapticMessageM2S>();
-//
-//
-//	if (WSAStartup(sockVersion, &wsaData) != 0)
-//	{
-//		return 0;
-//	}
-//
-//	//创建套接字  
-//	SOCKET slisten = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-//	if (slisten == INVALID_SOCKET)
-//	{
-//		printf("socket error !");
-//		return 0;
-//	}
-//
-//	//绑定IP和端口  
-//	sockaddr_in sin;
-//	sin.sin_family = AF_INET;
-//	sin.sin_port = htons(8888);
-//	sin.sin_addr.S_un.S_addr = INADDR_ANY;
-//	if (bind(slisten, (LPSOCKADDR)&sin, sizeof(sin)) == SOCKET_ERROR)
-//	{
-//		printf("bind error !");
-//	}
-//
-//	//开始监听  
-//	if (listen(slisten, 5) == SOCKET_ERROR)
-//	{
-//		printf("listen error !");
-//		return 0;
-//	}
-//
-//	//循环接收数据  
-//	SOCKET sClient;
-//	sockaddr_in remoteAddr;
-//	int nAddrlen = sizeof(remoteAddr);
-//
-//	printf("等待连接...\n");
-//	sClient = accept(slisten, (SOCKADDR *)&remoteAddr, &nAddrlen);
-//	if (sClient == INVALID_SOCKET)
-//	{
-//		printf("accept error !");
-//	}
-//	printf("接受到一个连接：%s:%d \r\n", inet_ntoa(remoteAddr.sin_addr), ntohs(remoteAddr.sin_port));
-//
-//	Sender *sender = new Sender();
-//	Receiver *receiver = new Receiver();
-//	sender->s = sClient;
-//	sender->Q = commandQ;
-//	receiver->s = sClient;
-//	receiver->Q = forceQ;
-//	unsigned  uiThread1ID;
-//	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
-//		0,             // stack size
-//		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-//		sender,           // arg list holding the "this" pointer
-//		CREATE_SUSPENDED, // so we can later call ResumeThread()
-//		&uiThread1ID);
-//	ResumeThread(hth1);
-//	// From here on there are two separate threads executing
-//	// our one program.
-//	unsigned  uiThread2ID;
-//	HANDLE hth2 = (HANDLE)_beginthreadex(NULL, // security
-//		0,             // stack size
-//		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-//		receiver,           // arg list holding the "this" pointer
-//		CREATE_SUSPENDED, // so we can later call ResumeThread()
-//		&uiThread2ID);
-//	ResumeThread(hth2);
-//	// This main thread can call the silly() function if it wants to.
-//	//WaitForSingleObject(hth1, INFINITE);
-//	//WaitForSingleObject(hth2, INFINITE);
-//	while (true) {
-//		if (!forceQ->empty()) {
-//			hapticMessageM2S temp;
-//			forceQ->try_pop(temp);
-//			commandQ->push(temp);
-//		}
-//	}
-//
-//
-//	DWORD   dwExitCode;
-//	GetExitCodeThread(hth1, &dwExitCode);
-//	printf("initial thread 1 exit code = %u\n", dwExitCode);
-//	GetExitCodeThread(hth2, &dwExitCode);
-//	printf("initial thread 1 exit code = %u\n", dwExitCode);
-//
-//	closesocket(slisten);
-//	WSACleanup();
-//	return 0;
-//}
