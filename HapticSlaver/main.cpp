@@ -367,7 +367,7 @@ int main(int argc, char* argv[])
 	std::cout << "[q] - Exit application" << std::endl;
 	std::cout << std::endl << std::endl;
 
-	socketServerInit();
+	socketClientInit();
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------

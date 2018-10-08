@@ -185,7 +185,7 @@ int main(int argc, char* argv[])
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(8888);
+	serAddr.sin_port = htons(4242);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sclient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //Á¬½ÓÊ§°Ü 
@@ -407,7 +407,7 @@ void updateHaptics(void)
 			if (commandQ->try_pop(msgS2M)) {
 				//todo  we reveive a message from slave side.
 				cVector3d force(msgS2M.force[0], msgS2M.force[1], msgS2M.force[2]);
-				cVector3d torque(msgS2M.torque[0], msgS2M.torque[0], msgS2M.torque[0]);
+				cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
 				double gripperForce = msgS2M.gripperForce;
 				// send computed force, torque, and gripper force to haptic device	
 				//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
@@ -416,8 +416,7 @@ void updateHaptics(void)
 				tool->setGripperForce(gripperForce);
 				
 				QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-				forceQ->try_pop(msgM2S);
-				std::cout << "master" << ((double)(curtime - msgM2S.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
+				std::cout << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
 				tool->applyToDevice();
 			}
 		}
