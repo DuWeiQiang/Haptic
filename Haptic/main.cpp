@@ -41,6 +41,8 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 //==============================================================================
 #include "commTool.cpp"
+#include "config.h"
+#include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
 //------------------------------------------------------------------------------
@@ -99,10 +101,91 @@ WORD sockVersion;
 WSADATA data;
 Sender<hapticMessageM2S> *sender;
 Receiver<hapticMessageS2M> *receiver;
-threadsafe_queue<hapticMessageM2S> *forceQ;
-threadsafe_queue<hapticMessageS2M> *commandQ;
+threadsafe_queue<hapticMessageM2S> *commandQ;
+threadsafe_queue<hapticMessageS2M> *forceQ;
 SOCKET sclient;
 LARGE_INTEGER cpuFreq;
+
+//------------------------------------------------------------------------------
+// Read Parameters from configuration file
+//------------------------------------------------------------------------------
+ConfigFile cfg("cfg/config.cfg"); // get the configuration file
+double ForceDeadbandParameter = cfg.getValueOfKey<double>("ForceDeadbandParameter"); //deadband parameter for force data reduction, 0.1 is the default value
+double VelocityDeadbandParameter = cfg.getValueOfKey<double>("VelocityDeadbandParameter"); //deadband parameter for velcity data reduction, 0.1 is the default value
+double PositionDeadbandParameter = cfg.getValueOfKey<double>("PositionDeadbandParameter"); //deadband parameter for position data reduction, 0.1 is the default value
+
+int ForceDelay = cfg.getValueOfKey<int>("ForceDelay"); // ms: constant network delay on Force feedback
+int CommandDelay = cfg.getValueOfKey<int>("CommandDelay"); // ms: constant network delay on Commanding channel 
+														   //int RecordSwitch = cfg.getValueOfKey<int>("RecordSignals"); // 0: Turn off recording, 1: Turn on recording
+int RecordSwitch = 1;
+int ControlMode = cfg.getValueOfKey<int>("ControlMode"); // 0: position control, 1:velocity control
+int FlagVelocityKalmanFilter = cfg.getValueOfKey<int>("FlagVelocityKalmanFilter"); // 0: Kalman filter disabled 1: Kalman filter enabled on velocity signal
+
+DeadbandDataReduction* DBForce; // data reduction class for force samples
+DeadbandDataReduction* DBVelocity; // data reduction class for velocity samples
+DeadbandDataReduction* DBPosition; // data reduction class for position samples
+
+bool ForceTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+bool VelocityTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+bool PositionTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+
+KalmanFilter VelocityKalmanFilter; // applies 3 DoF kalman filtering to remove noise from velocity signal																				   
+
+int ForcePacketNum = 0;
+int VelocityPacketNum = 0;
+int PositionPacketNum = 0;
+//------------------------------------------------------------------------------
+// TDPA variable and function realted code
+//------------------------------------------------------------------------------
+//----------TDPA---------------------
+
+void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3]);
+void initEnergy();
+double sample_interval = 0.001;   //1kHz
+
+double SlaveControlForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
+double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
+double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
+double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
+double alpha_m = 0, beta_s = 0;
+bool TDPAon = false;
+double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
+bool use_tauFilter = true;
+
+double MasterForce[3] = { 0.0, 0.0, 0.0 };
+double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
+double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
+
+double UpdatedForceSample[3] = { 0.0,0.0,0.0 };  // updated 3 DoF force sample (holds the signal after deadband)
+double UpdatedVelocitySample[3] = { 0.0,0.0,0.0 }; // update 3 DoF velocity sample (holds the signal after deadband)
+double UpdatedPositionSample[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF position sample (holds the signal after deadband)
+
+
+KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
+//-----------TDPA compute energy--------------
+void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3])
+{
+	// only for z direction
+	double power = vel[2] * (-1 * force[2]);
+	if (power >= 0)
+	{
+		Ein = Ein + sample_interval*power;
+	}
+	else
+	{
+		Eout = Eout - sample_interval*power;
+	}
+}
+void initEnergy()
+{
+	SlaveControlForce[0] = SlaveControlForce[0] = SlaveControlForce[0] = 0.0;
+	Em_in = Em_out = Es_in = Es_out = 0;
+	Em_in_last = Es_in_last = 0;
+	E_trans_m = E_trans_s = E_recv_m = E_recv_s = 0;
+	alpha_m = beta_s = 0;
+}
+
+
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -137,20 +220,54 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
-	std::cout << sizeof(hapticMessageM2S) << "" << sizeof(hapticMessageS2M);
-	std::cout << std::endl; 
-	std::cout << "-----------------------------------" << std::endl;
-	std::cout << "CHAI3D" << std::endl;
-	std::cout << "Demo: 01-mydevice" << std::endl;
-	std::cout << "Copyright 2003-2016" << std::endl;
-	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
-	std::cout << "Keyboard Options:" << std::endl << std::endl;
-	std::cout << "[1] - Enable/Disable potential field" << std::endl;
-	std::cout << "[2] - Enable/Disable damping" << std::endl;
-	std::cout << "[f] - Enable/Disable full screen mode" << std::endl;
-	std::cout << "[m] - Enable/Disable vertical mirroring" << std::endl;
-	std::cout << "[q] - Exit application" << std::endl;
-	std::cout << std::endl << std::endl;
+	//--------------------------------------------------------------------------
+	// INITIALIZATION
+	//--------------------------------------------------------------------------
+	printf("-----------------------------------\n");
+
+	printf("(C) TU Munich 2017 Chair of Media Technology\n");
+	printf("Author: Burak Cizmeci\n");
+	printf("Contributors: Xiao Xu\n");
+
+	printf("Haptic Communication Demo Application\n");
+	printf("Demo:  Cube manipulation\n");
+	printf("Copyright 2017\n");
+	printf("-----------------------------------\n");
+	printf("\n");
+	printf("Keyboard Options:\n\n");
+
+	printf("******* Control mode keys *********************************\n");
+	printf("[p] - switch to position control\n");
+	printf("[v] - switch to velocity control\n");
+	printf("[k] - enable/disable Kalman filter on velocity\n");
+	printf("*********************************************************\n\n");
+
+	printf("******* Deadband increase/decrease keys *******************\n");
+	printf("[q] - increase force deadband (+0.01) \n");
+	printf("[a] - decrease force deadband (-0.01)\n");
+	printf("[w] - increase velocity/position deadband (+0.01)\n");
+	printf("[s] - decrease velocity/position deadband (-0.01)\n");
+	printf("**********************************************************\n\n");
+	printf("******* Virtual Environment Control keys *****************\n");
+	printf("[r] - move the cube to its initial position (reset button)\n");
+	printf("[x] - Exit application\n");
+	printf("\n\n");
+
+	//-----------------------------------------------------------------------
+	// Haptic communication initialization
+	//-----------------------------------------------------------------------
+
+	printf("Current force deadband parameter = %f \n", ForceDeadbandParameter);
+	printf("Current velocity deadband parameter = %f \n", VelocityDeadbandParameter);
+	printf("Current position deadband parameter = %f \n", PositionDeadbandParameter);
+	printf("Delay from Teleoperator to Operator is %d ms\n", ForceDelay);
+	printf("Delay from Operator to Teleoperator is %d ms\n\n", CommandDelay);
+	printf("Control Mode: Perceptual Deadband only \n");
+
+	// initialized deadband classes for force and velocity
+	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
+	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
+	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 	//--------------------------------------------------------------------------
 	// socket communication setup
 	//--------------------------------------------------------------------------
@@ -158,8 +275,8 @@ int main(int argc, char* argv[])
 	sockVersion = MAKEWORD(2, 2);
 	sender = new Sender<hapticMessageM2S>();
 	receiver = new Receiver<hapticMessageS2M>();
-	forceQ = new threadsafe_queue<hapticMessageM2S>();
-	commandQ = new threadsafe_queue<hapticMessageS2M>();
+	commandQ = new threadsafe_queue<hapticMessageM2S>();
+	forceQ = new threadsafe_queue<hapticMessageS2M>();
 
 
 	if (WSAStartup(sockVersion, &data) != 0)
@@ -185,7 +302,7 @@ int main(int argc, char* argv[])
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(4242);
+	serAddr.sin_port = htons(8888);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sclient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //Á¬½ÓÊ§°Ü 
@@ -196,9 +313,9 @@ int main(int argc, char* argv[])
 
 
 	sender->s = sclient;
-	sender->Q = forceQ;
+	sender->Q = commandQ;
 	receiver->s = sclient;
-	receiver->Q = commandQ;
+	receiver->Q = forceQ;
 	unsigned  uiThread1ID;
 	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
 		0,             // stack size
@@ -310,10 +427,15 @@ void updateHaptics(void)
 	// simulation in nowTimes running
 	simulationRunning = true;
 	simulationFinished = false;
-
+	__int64 curtime;
 	// main haptic simulation loop
+
+
+
 	while (simulationRunning)
-	{
+	{	
+
+#pragma region READ HAPTIC DATA FROM DEVICE
 		/////////////////////////////////////////////////////////////////////
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
@@ -359,21 +481,139 @@ void updateHaptics(void)
 		button1 = tool->getUserSwitch(1);
 		button2 = tool->getUserSwitch(2);
 		button3 = tool->getUserSwitch(3);
+#pragma endregion
 
-		//hapticDevice->getUserSwitch(0, button0);
-		//hapticDevice->getUserSwitch(1, button1);
-		//hapticDevice->getUserSwitch(2, button2);
-		//hapticDevice->getUserSwitch(3, button3);
+#pragma region save TDPA-realsted data into variable
+		//used to calculate Eout and damping
+		for (int i = 0; i < 0; i++) {
+			MasterVelocity[i] = linearVelocity(i);
+			MasterPosition[i] = position(i);
+		}
+
+		if (FlagVelocityKalmanFilter == 1) {
+			// Apply Kalman filtering to remove the noise on velocity signal
+			VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
+			MasterVelocity[0] = VelocityKalmanFilter.CurrentEstimation[0];
+			MasterVelocity[1] = VelocityKalmanFilter.CurrentEstimation[1];
+			MasterVelocity[2] = VelocityKalmanFilter.CurrentEstimation[2];
+		}
+#pragma endregion
+
+#pragma region check receive queues and read Slave2Master message from it.
+		/////////////////////////////////////////////////////////////////////
+		// check receive queues.
+		/////////////////////////////////////////////////////////////////////
+		hapticMessageS2M msgS2M;
+
+		if (!forceQ->empty()) {
+			if (forceQ->try_pop(msgS2M)) {
+				//todo  we reveive a message from slave side.
+				cVector3d force(msgS2M.force[0], msgS2M.force[1], msgS2M.force[2]);
+				cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
+				double gripperForce = msgS2M.gripperForce;
+				// send computed force, torque, and gripper force to haptic device	
+				//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
+				//tool->setDeviceLocalForce(force);
+				//tool->setDeviceLocalTorque(torque);
+				//tool->setGripperForce(gripperForce);
+
+				//QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
+				//std::cout << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
+				//tool->applyToDevice();
+			}
+		}
+		else {
+			memset(&msgS2M, 0, sizeof(hapticMessageS2M));
+		}
+#pragma endregion
+
+#pragma region TDPA
+		/////////////////////////////////////////////////////////////////////
+		// TDPA algorithm related code
+		/////////////////////////////////////////////////////////////////////
+		
+		//get force and energy from Slave2Master message
+		memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
+		E_recv_m = msgS2M.energy;
+
+		// 2. compute Emout and damping
+		ComputeEnergy(Em_in, Em_out, MasterVelocity, MasterForce);
+		if (Em_out > E_recv_m && abs(MasterVelocity[2]) > 0.001)
+		{
+			alpha_m = (Em_out - E_recv_m) / (sample_interval*MasterVelocity[2] * MasterVelocity[2]);
+			Em_out = E_recv_m;
+		}
+		else
+			alpha_m = 0;
+
+		// 3. revise force and apply the revised force
+		if (TDPAon)
+			MasterForce[2] = MasterForce[2] - alpha_m*MasterVelocity[2];
+
+		// 3.5 force filter (use dot(f) and tau)
+		if (use_tauFilter)
+		{
+			ForceKalmanFilter.ApplyKalmanFilter(MasterForce);
+			MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
+		}
+#pragma endregion
+
+#pragma region Apply Force
+		// apply the master force to the device
+		// here we minus MasterVelocity[2] * 0.15 
+		// because there are still some tremble after filter 
+		// and inherent characteristic of device will cause tremble
+		cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2] - MasterVelocity[2] * 0.15);
+		tool->setDeviceLocalForce(force);
+		tool->applyToDevice();
+		lastMasterForce[2] = MasterForce[2];
+#pragma endregion
+
+#pragma region calculate velocity and Ein used to create Master2Slave message
+		// 4. send master velocity and Ein
+		// Apply deadband on position
 
 
+
+		DBPosition->GetCurrentSample(MasterPosition);
+		DBPosition->ApplyZOHDeadband(UpdatedPositionSample, &PositionTransmitFlag);
+
+		if (PositionTransmitFlag == true) {
+
+			PositionPacketNum++;
+
+		}
+
+		// Apply deadband on velocity
+		DBVelocity->GetCurrentSample(MasterVelocity);
+		DBVelocity->ApplyZOHDeadband(UpdatedVelocitySample, &VelocityTransmitFlag);
+
+		if (VelocityTransmitFlag == true) {
+
+			VelocityPacketNum++;
+			// for TDPA
+			E_trans_m = Em_in;
+			Em_in_last = Em_in;
+		}
+		else
+		{
+			//for TDPA
+			E_trans_m = Em_in_last;
+			//---passive deadband-----
+		}
+#pragma endregion
+
+#pragma region create message and send
 		/////////////////////////////////////////////////////////////////////
 		// create message to send
 		/////////////////////////////////////////////////////////////////////
 
+
+
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = position(i);
-			msgM2S.linearVelocity[i] = linearVelocity(i);
+			msgM2S.position[i] = UpdatedPositionSample[i];//modified by TDPA 
+			msgM2S.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
 			msgM2S.angularVelocity[i] = angularVelocity(i);
 			msgM2S.rotation[i] = rotation.getCol0()(i);
 			msgM2S.rotation[i + 3] = rotation.getCol1()(i);
@@ -386,42 +626,22 @@ void updateHaptics(void)
 		msgM2S.button2 = button2;
 		msgM2S.button3 = button3;
 		msgM2S.userSwitches = allSwitches;
-		__int64 curtime;
+		msgM2S.energy = E_trans_m;//modified by TDPA 
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 		msgM2S.time = curtime;
-			
 
 		/////////////////////////////////////////////////////////////////////
-		// push into send queues and prepare to send by sender thread.
+		// push into sender queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
-		counter++;
-		if (counter == 1000) {
-			counter = 0;
-		forceQ->push(msgM2S);
-		}
-		/////////////////////////////////////////////////////////////////////
-		// check receive queues.
-		/////////////////////////////////////////////////////////////////////
-		hapticMessageS2M msgS2M;
-		if (!commandQ->empty()) {
-			if (commandQ->try_pop(msgS2M)) {
-				//todo  we reveive a message from slave side.
-				cVector3d force(msgS2M.force[0], msgS2M.force[1], msgS2M.force[2]);
-				cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
-				double gripperForce = msgS2M.gripperForce;
-				// send computed force, torque, and gripper force to haptic device	
-				//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
-				tool->setDeviceLocalForce(force);
-				tool->setDeviceLocalTorque(torque);
-				tool->setGripperForce(gripperForce);
-				
-				QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-				std::cout << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
-				tool->applyToDevice();
-			}
-		}
+		//counter++;
+		//if (counter == 1000) {
+		//	counter = 0;
+			std::cout << "hello" << freqCounterHaptics.getFrequency() << std::endl;
+			commandQ->push(msgM2S);
+		//}
 
-		//Sleep(1);
+#pragma endregion
+
 		// signal frequency counter
 		freqCounterHaptics.signal(1);
 	}

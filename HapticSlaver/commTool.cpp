@@ -38,6 +38,8 @@ struct hapticMessageM2S {
 
 	double userSwitches;
 
+	double energy;
+
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
 };
@@ -45,6 +47,7 @@ struct hapticMessageM2S {
 
 struct hapticMessageS2M {
 	__int64 time;
+	double energy;
 	double force[3];
 	double torque[3];
 	double gripperForce;
