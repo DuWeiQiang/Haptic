@@ -206,7 +206,7 @@ double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
 double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
 double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
 double alpha_m = 0, beta_s = 0;
-bool TDPAon = false;
+bool TDPAon = true;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
 bool use_tauFilter = true;
 
@@ -488,7 +488,7 @@ int main(int argc, char* argv[])
 	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
 	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 
-	socketServerInit();
+	socketClientInit();
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -1106,34 +1106,34 @@ void updateHaptics(void)
 #pragma endregion
 
 #pragma region Apply the data into enviroment and compute forces
-			//if (ControlMode == 1) { // if velocity control mode is selected
-			//		// Compute tool position using delayed velocity signal
-			//	if (fabs(ModifiedSlaveVel[0]) < 10 && fabs(ModifiedSlaveVel[1]) < 10 && fabs(ModifiedSlaveVel[2]) < 10) {
+			if (ControlMode == 1) { // if velocity control mode is selected
+					// Compute tool position using delayed velocity signal
+				if (fabs(ModifiedSlaveVel[0]) < 10 && fabs(ModifiedSlaveVel[1]) < 10 && fabs(ModifiedSlaveVel[2]) < 10) {
 
-			//		position.x(PreviousPosition[0] + 0.001*ModifiedSlaveVel[0]);
-			//		position.y(PreviousPosition[1] + 0.001*ModifiedSlaveVel[1]);
-			//		position.z(PreviousPosition[2] + 0.001*ModifiedSlaveVel[2]);
+					position.x(PreviousPosition[0] + 0.01*ModifiedSlaveVel[0]);
+					position.y(PreviousPosition[1] + 0.01*ModifiedSlaveVel[1]);
+					position.z(PreviousPosition[2] + 0.01*ModifiedSlaveVel[2]);
 
-			//	}
-			//	else {
+				}
+				else {
 
-			//		position.x(PreviousPosition[0]);
-			//		position.y(PreviousPosition[1]);
-			//		position.z(PreviousPosition[2]);
-			//	}
+					position.x(PreviousPosition[0]);
+					position.y(PreviousPosition[1]);
+					position.z(PreviousPosition[2]);
+				}
 
-			//}
-			//else
-			//{
+			}
+			else
+			{
 
-			//	position.x(ModifiedSlavePos[0]);
-			//	position.y(ModifiedSlavePos[1]);
-			//	position.z(ModifiedSlavePos[2]);
-			//}
+				position.x(ModifiedSlavePos[0]);
+				position.y(ModifiedSlavePos[1]);
+				position.z(ModifiedSlavePos[2]);
+			}
 			tool->setDeviceLocalPos(position);// modified by TDPA
 			tool->setDeviceLocalRot(rotation);
 			tool->setDeviceLocalAngVel(angularVelocity);
-			tool->setDeviceLocalLinVel(linearVelocity); // comment by TDPA
+			//tool->setDeviceLocalLinVel(linearVelocity); // comment by TDPA
 			tool->setUserSwitches(allSwitches);
 			tool->setGripperAngleRad(gripperAngle);
 			tool->setGripperAngVel(gripperAngularVelocity);
@@ -1185,7 +1185,7 @@ void updateHaptics(void)
 			
 			hapticMessageS2M msgS2M;
 			for (int i = 0; i < 3; i++) {
-				msgS2M.force[i] = force(i);// modified by TDPA
+				msgS2M.force[i] = UpdatedForceSample[i];// modified by TDPA
 				msgS2M.torque[i] = torque(i);
 			}
 			msgS2M.gripperForce = gripperForce;

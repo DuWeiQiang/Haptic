@@ -148,9 +148,9 @@ double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
 double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
 double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
 double alpha_m = 0, beta_s = 0;
-bool TDPAon = false;
+bool TDPAon = true;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
-bool use_tauFilter = false;
+bool use_tauFilter = true;
 
 double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
@@ -302,7 +302,7 @@ int main(int argc, char* argv[])
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(8888);
+	serAddr.sin_port = htons(4242);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sclient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //Á¬½ÓÊ§°Ü 
@@ -556,7 +556,7 @@ void updateHaptics(void)
 				// here we minus MasterVelocity[2] * 0.15 
 				// because there are still some tremble after filter 
 				// and inherent characteristic of device will cause tremble
-				cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2]);
+				cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2] - MasterVelocity[2] * 0.15);
 				tool->setDeviceLocalForce(force);
 				tool->applyToDevice();
 				lastMasterForce[2] = MasterForce[2];
@@ -613,8 +613,8 @@ void updateHaptics(void)
 
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = position(i);//modified by TDPA 
-			msgM2S.linearVelocity[i] = linearVelocity(i);//modified by TDPA 
+			msgM2S.position[i] = UpdatedPositionSample[i];//modified by TDPA 
+			msgM2S.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
 			msgM2S.angularVelocity[i] = angularVelocity(i);
 			msgM2S.rotation[i] = rotation.getCol0()(i);
 			msgM2S.rotation[i + 3] = rotation.getCol1()(i);
@@ -634,17 +634,17 @@ void updateHaptics(void)
 		/////////////////////////////////////////////////////////////////////
 		// push into sender queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
-		//counter++;
-		//if (counter == 1000) {
-		//	counter = 0;
-		std::cout<< "hello" << msgM2S.position[0] << " " << msgM2S.position[1] << " " << msgM2S.position[2] << " " << std::endl;
+		counter++;
+		if (counter == 1000) {
+			counter = 0;freqCounterHaptics.signal(1);
+		std::cout<< "hello" << freqCounterHaptics.getFrequency() << std::endl;
 		commandQ->push(msgM2S);
-		//}
+		}
 
 #pragma endregion
 
 		// signal frequency counter
-		freqCounterHaptics.signal(1);
+		
 	}
 
 	// exit haptics thread
