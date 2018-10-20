@@ -150,7 +150,7 @@ double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitte
 double alpha_m = 0, beta_s = 0;
 bool TDPAon = false;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
-bool use_tauFilter = true;
+bool use_tauFilter = false;
 
 double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
@@ -433,7 +433,7 @@ void updateHaptics(void)
 
 
 	while (simulationRunning)
-	{	
+	{
 
 #pragma region READ HAPTIC DATA FROM DEVICE
 		/////////////////////////////////////////////////////////////////////
@@ -485,7 +485,7 @@ void updateHaptics(void)
 
 #pragma region save TDPA-realsted data into variable
 		//used to calculate Eout and damping
-		for (int i = 0; i < 0; i++) {
+		for (int i = 0; i < 3; i++) {
 			MasterVelocity[i] = linearVelocity(i);
 			MasterPosition[i] = position(i);
 		}
@@ -508,18 +508,59 @@ void updateHaptics(void)
 		if (!forceQ->empty()) {
 			if (forceQ->try_pop(msgS2M)) {
 				//todo  we reveive a message from slave side.
-				cVector3d force(msgS2M.force[0], msgS2M.force[1], msgS2M.force[2]);
-				cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
-				double gripperForce = msgS2M.gripperForce;
+				//cVector3d force(msgS2M.force[0], msgS2M.force[1], msgS2M.force[2]);
+				//cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
+				//double gripperForce = msgS2M.gripperForce;
 				// send computed force, torque, and gripper force to haptic device	
 				//hapticDevice->setForceAndTorqueAndGripperForce(force, torque, gripperForce);
 				//tool->setDeviceLocalForce(force);
 				//tool->setDeviceLocalTorque(torque);
 				//tool->setGripperForce(gripperForce);
 
-				//QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-				//std::cout << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
+				QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
+				//std::cout << freqCounterHaptics.getFrequency() << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 ;
 				//tool->applyToDevice();
+		#pragma region TDPA
+				/////////////////////////////////////////////////////////////////////
+				// TDPA algorithm related code
+				/////////////////////////////////////////////////////////////////////
+
+				//get force and energy from Slave2Master message
+				memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
+				E_recv_m = msgS2M.energy;
+
+				// 2. compute Emout and damping
+				ComputeEnergy(Em_in, Em_out, MasterVelocity, MasterForce);
+				if (Em_out > E_recv_m && abs(MasterVelocity[2]) > 0.001)
+				{
+					alpha_m = (Em_out - E_recv_m) / (sample_interval*MasterVelocity[2] * MasterVelocity[2]);
+					Em_out = E_recv_m;
+				}
+				else
+					alpha_m = 0;
+
+				// 3. revise force and apply the revised force
+				if (TDPAon)
+					MasterForce[2] = MasterForce[2] - alpha_m*MasterVelocity[2];
+
+				// 3.5 force filter (use dot(f) and tau)
+				if (use_tauFilter)
+				{
+					ForceKalmanFilter.ApplyKalmanFilter(MasterForce);
+					MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
+				}
+		#pragma endregion
+
+		#pragma region Apply Force
+				// apply the master force to the device
+				// here we minus MasterVelocity[2] * 0.15 
+				// because there are still some tremble after filter 
+				// and inherent characteristic of device will cause tremble
+				cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2]);
+				tool->setDeviceLocalForce(force);
+				tool->applyToDevice();
+				lastMasterForce[2] = MasterForce[2];
+		#pragma endregion
 			}
 		}
 		else {
@@ -527,47 +568,7 @@ void updateHaptics(void)
 		}
 #pragma endregion
 
-#pragma region TDPA
-		/////////////////////////////////////////////////////////////////////
-		// TDPA algorithm related code
-		/////////////////////////////////////////////////////////////////////
-		
-		//get force and energy from Slave2Master message
-		memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
-		E_recv_m = msgS2M.energy;
 
-		// 2. compute Emout and damping
-		ComputeEnergy(Em_in, Em_out, MasterVelocity, MasterForce);
-		if (Em_out > E_recv_m && abs(MasterVelocity[2]) > 0.001)
-		{
-			alpha_m = (Em_out - E_recv_m) / (sample_interval*MasterVelocity[2] * MasterVelocity[2]);
-			Em_out = E_recv_m;
-		}
-		else
-			alpha_m = 0;
-
-		// 3. revise force and apply the revised force
-		if (TDPAon)
-			MasterForce[2] = MasterForce[2] - alpha_m*MasterVelocity[2];
-
-		// 3.5 force filter (use dot(f) and tau)
-		if (use_tauFilter)
-		{
-			ForceKalmanFilter.ApplyKalmanFilter(MasterForce);
-			MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
-		}
-#pragma endregion
-
-#pragma region Apply Force
-		// apply the master force to the device
-		// here we minus MasterVelocity[2] * 0.15 
-		// because there are still some tremble after filter 
-		// and inherent characteristic of device will cause tremble
-		cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2] - MasterVelocity[2] * 0.15);
-		tool->setDeviceLocalForce(force);
-		tool->applyToDevice();
-		lastMasterForce[2] = MasterForce[2];
-#pragma endregion
 
 #pragma region calculate velocity and Ein used to create Master2Slave message
 		// 4. send master velocity and Ein
@@ -612,8 +613,8 @@ void updateHaptics(void)
 
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = UpdatedPositionSample[i];//modified by TDPA 
-			msgM2S.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
+			msgM2S.position[i] = position(i);//modified by TDPA 
+			msgM2S.linearVelocity[i] = linearVelocity(i);//modified by TDPA 
 			msgM2S.angularVelocity[i] = angularVelocity(i);
 			msgM2S.rotation[i] = rotation.getCol0()(i);
 			msgM2S.rotation[i + 3] = rotation.getCol1()(i);
@@ -636,8 +637,8 @@ void updateHaptics(void)
 		//counter++;
 		//if (counter == 1000) {
 		//	counter = 0;
-			std::cout << "hello" << freqCounterHaptics.getFrequency() << std::endl;
-			commandQ->push(msgM2S);
+		std::cout<< "hello" << msgM2S.position[0] << " " << msgM2S.position[1] << " " << msgM2S.position[2] << " " << std::endl;
+		commandQ->push(msgM2S);
 		//}
 
 #pragma endregion

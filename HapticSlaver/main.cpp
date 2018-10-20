@@ -1087,7 +1087,7 @@ void updateHaptics(void)
 
 			E_recv_s = msgM2S.energy;
 			memcpy(ModifiedSlavePos, msgM2S.position, 3 * sizeof(double));
-			memcpy(ModifiedSlaveVel, msgM2S.position, 3 * sizeof(double));
+			memcpy(ModifiedSlaveVel, msgM2S.linearVelocity, 3 * sizeof(double));
 
 #pragma region TDPA
 			// 2. compute Esout and damping
@@ -1106,34 +1106,34 @@ void updateHaptics(void)
 #pragma endregion
 
 #pragma region Apply the data into enviroment and compute forces
-			if (ControlMode == 1) { // if velocity control mode is selected
-					// Compute tool position using delayed velocity signal
-				if (fabs(ModifiedSlaveVel[0]) < 10 && fabs(ModifiedSlaveVel[1]) < 10 && fabs(ModifiedSlaveVel[2]) < 10) {
+			//if (ControlMode == 1) { // if velocity control mode is selected
+			//		// Compute tool position using delayed velocity signal
+			//	if (fabs(ModifiedSlaveVel[0]) < 10 && fabs(ModifiedSlaveVel[1]) < 10 && fabs(ModifiedSlaveVel[2]) < 10) {
 
-					position.x(PreviousPosition[0] + 0.001*ModifiedSlaveVel[0]);
-					position.y(PreviousPosition[1] + 0.001*ModifiedSlaveVel[1]);
-					position.z(PreviousPosition[2] + 0.001*ModifiedSlaveVel[2]);
+			//		position.x(PreviousPosition[0] + 0.001*ModifiedSlaveVel[0]);
+			//		position.y(PreviousPosition[1] + 0.001*ModifiedSlaveVel[1]);
+			//		position.z(PreviousPosition[2] + 0.001*ModifiedSlaveVel[2]);
 
-				}
-				else {
+			//	}
+			//	else {
 
-					position.x(PreviousPosition[0]);
-					position.y(PreviousPosition[1]);
-					position.z(PreviousPosition[2]);
-				}
+			//		position.x(PreviousPosition[0]);
+			//		position.y(PreviousPosition[1]);
+			//		position.z(PreviousPosition[2]);
+			//	}
 
-			}
-			else
-			{
+			//}
+			//else
+			//{
 
-				position.x(ModifiedSlavePos[0]);
-				position.y(ModifiedSlavePos[1]);
-				position.z(ModifiedSlavePos[2]);
-			}
+			//	position.x(ModifiedSlavePos[0]);
+			//	position.y(ModifiedSlavePos[1]);
+			//	position.z(ModifiedSlavePos[2]);
+			//}
 			tool->setDeviceLocalPos(position);// modified by TDPA
 			tool->setDeviceLocalRot(rotation);
 			tool->setDeviceLocalAngVel(angularVelocity);
-			//tool->setDeviceLocalLinVel(linearVelocity); // comment by TDPA
+			tool->setDeviceLocalLinVel(linearVelocity); // comment by TDPA
 			tool->setUserSwitches(allSwitches);
 			tool->setGripperAngleRad(gripperAngle);
 			tool->setGripperAngVel(gripperAngularVelocity);
@@ -1185,7 +1185,7 @@ void updateHaptics(void)
 			
 			hapticMessageS2M msgS2M;
 			for (int i = 0; i < 3; i++) {
-				msgS2M.force[i] = UpdatedForceSample[i];// modified by TDPA
+				msgS2M.force[i] = force(i);// modified by TDPA
 				msgS2M.torque[i] = torque(i);
 			}
 			msgS2M.gripperForce = gripperForce;
