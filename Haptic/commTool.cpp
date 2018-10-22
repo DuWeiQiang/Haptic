@@ -12,9 +12,8 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
-struct hapticMessageM2S {
-	__int64 time;
 
+struct hapticData {
 	// position, cVector3d contains 3 double values
 	double position[3];
 
@@ -35,19 +34,26 @@ struct hapticMessageM2S {
 
 	double userSwitches;
 
-	double energy;
-
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
 };
 
-
-struct hapticMessageS2M {
-	__int64 time;
+struct hapticMessageM2S {
+	__int64 timeStamp;
+	hapticData data;
 	double energy;
+};
+
+struct forceData {
 	double force[3];
 	double torque[3];
 	double gripperForce;
+};
+
+struct hapticMessageS2M {
+	__int64 timeStamp;
+	double energy;
+	forceData data;
 };
 
 template<typename T>

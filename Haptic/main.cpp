@@ -302,7 +302,7 @@ int main(int argc, char* argv[])
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(4242);
+	serAddr.sin_port = htons(8888);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sclient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //Á¬½ÓÊ§°Ü 
@@ -420,6 +420,11 @@ void close(void)
 	delete handler;
 }
 
+
+void readHaptic() {
+
+}
+
 //------------------------------------------------------------------------------
 int counter = 0;
 void updateHaptics(void)
@@ -518,7 +523,7 @@ void updateHaptics(void)
 				//tool->setGripperForce(gripperForce);
 
 				QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-				//std::cout << freqCounterHaptics.getFrequency() << "master" << ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000 ;
+				std::cout << freqCounterHaptics.getFrequency() << "master" << ((double)(curtime - msgS2M.timeStamp) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
 				//tool->applyToDevice();
 		#pragma region TDPA
 				/////////////////////////////////////////////////////////////////////
@@ -526,7 +531,7 @@ void updateHaptics(void)
 				/////////////////////////////////////////////////////////////////////
 
 				//get force and energy from Slave2Master message
-				memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
+				memcpy(MasterForce, msgS2M.data.force, 3 * sizeof(double));
 				E_recv_m = msgS2M.energy;
 
 				// 2. compute Emout and damping
@@ -613,31 +618,31 @@ void updateHaptics(void)
 
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = UpdatedPositionSample[i];//modified by TDPA 
-			msgM2S.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
-			msgM2S.angularVelocity[i] = angularVelocity(i);
-			msgM2S.rotation[i] = rotation.getCol0()(i);
-			msgM2S.rotation[i + 3] = rotation.getCol1()(i);
-			msgM2S.rotation[i + 6] = rotation.getCol2()(i);
+			msgM2S.data.position[i] = UpdatedPositionSample[i];//modified by TDPA 
+			msgM2S.data.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
+			msgM2S.data.angularVelocity[i] = angularVelocity(i);
+			msgM2S.data.rotation[i] = rotation.getCol0()(i);
+			msgM2S.data.rotation[i + 3] = rotation.getCol1()(i);
+			msgM2S.data.rotation[i + 6] = rotation.getCol2()(i);
 		}
-		msgM2S.gripperAngle = gripperAngle;
-		msgM2S.gripperAngularVelocity = gripperAngularVelocity;
-		msgM2S.button0 = button0;
-		msgM2S.button1 = button1;
-		msgM2S.button2 = button2;
-		msgM2S.button3 = button3;
-		msgM2S.userSwitches = allSwitches;
+		msgM2S.data.gripperAngle = gripperAngle;
+		msgM2S.data.gripperAngularVelocity = gripperAngularVelocity;
+		msgM2S.data.button0 = button0;
+		msgM2S.data.button1 = button1;
+		msgM2S.data.button2 = button2;
+		msgM2S.data.button3 = button3;
+		msgM2S.data.userSwitches = allSwitches;
 		msgM2S.energy = E_trans_m;//modified by TDPA 
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-		msgM2S.time = curtime;
+		msgM2S.timeStamp = curtime;
 
 		/////////////////////////////////////////////////////////////////////
 		// push into sender queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
 		counter++;
-		if (counter == 1000) {
+		if (counter == 500) {
 			counter = 0;freqCounterHaptics.signal(1);
-		std::cout<< "hello" << freqCounterHaptics.getFrequency() << std::endl;
+		//std::cout<< "hello" << freqCounterHaptics.getFrequency() << std::endl;
 		commandQ->push(msgM2S);
 		}
 

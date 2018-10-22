@@ -488,7 +488,7 @@ int main(int argc, char* argv[])
 	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
 	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 
-	socketClientInit();
+	socketServerInit();
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -655,34 +655,34 @@ int main(int argc, char* argv[])
 	hapticMessageM2S msgM2S = *commandQ->wait_and_pop();
 	std::cout << "helloworld";
 	// read position 
-	cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
+	cVector3d position(msgM2S.data.position[0], msgM2S.data.position[1], msgM2S.data.position[2]);
 
 	// read orientation 
-	cVector3d col0(msgM2S.rotation[0], msgM2S.rotation[1], msgM2S.rotation[2]);
-	cVector3d col1(msgM2S.rotation[3], msgM2S.rotation[4], msgM2S.rotation[5]);
-	cVector3d col2(msgM2S.rotation[6], msgM2S.rotation[7], msgM2S.rotation[8]);
+	cVector3d col0(msgM2S.data.rotation[0], msgM2S.data.rotation[1], msgM2S.data.rotation[2]);
+	cVector3d col1(msgM2S.data.rotation[3], msgM2S.data.rotation[4], msgM2S.data.rotation[5]);
+	cVector3d col2(msgM2S.data.rotation[6], msgM2S.data.rotation[7], msgM2S.data.rotation[8]);
 	cMatrix3d rotation(col0, col1, col2);
 
 	// read gripper position
-	double gripperAngle = msgM2S.gripperAngle;
+	double gripperAngle = msgM2S.data.gripperAngle;
 
 	// read linear velocity 
-	cVector3d linearVelocity(msgM2S.linearVelocity[0], msgM2S.linearVelocity[1], msgM2S.linearVelocity[2]);
+	cVector3d linearVelocity(msgM2S.data.linearVelocity[0], msgM2S.data.linearVelocity[1], msgM2S.data.linearVelocity[2]);
 
 	// read angular velocity
-	cVector3d angularVelocity(msgM2S.angularVelocity[0], msgM2S.angularVelocity[1], msgM2S.angularVelocity[2]);
+	cVector3d angularVelocity(msgM2S.data.angularVelocity[0], msgM2S.data.angularVelocity[1], msgM2S.data.angularVelocity[2]);
 
 	// read gripper angular velocity
-	double gripperAngularVelocity = msgM2S.gripperAngularVelocity;
+	double gripperAngularVelocity = msgM2S.data.gripperAngularVelocity;
 
-	unsigned int allSwitches = msgM2S.userSwitches;
+	unsigned int allSwitches = msgM2S.data.userSwitches;
 
 	// read user-switch status (button 0)
 	bool button0, button1, button2, button3;
-	button0 = msgM2S.button0;
-	button1 = msgM2S.button1;
-	button2 = msgM2S.button2;
-	button3 = msgM2S.button3;
+	button0 = msgM2S.data.button0;
+	button1 = msgM2S.data.button1;
+	button2 = msgM2S.data.button2;
+	button3 = msgM2S.data.button3;
 
 	tool->setDeviceGlobalPos(position);
 	tool->setDeviceLocalRot(rotation);
@@ -1055,39 +1055,39 @@ void updateHaptics(void)
 
 			commandQ->try_pop(msgM2S);
 			// read position 
-			cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
+			cVector3d position(msgM2S.data.position[0], msgM2S.data.position[1], msgM2S.data.position[2]);
 			std::cout << position << std::endl;
 			// read orientation 
-			cVector3d col0(msgM2S.rotation[0], msgM2S.rotation[1], msgM2S.rotation[2]);
-			cVector3d col1(msgM2S.rotation[3], msgM2S.rotation[4], msgM2S.rotation[5]);
-			cVector3d col2(msgM2S.rotation[6], msgM2S.rotation[7], msgM2S.rotation[8]);
+			cVector3d col0(msgM2S.data.rotation[0], msgM2S.data.rotation[1], msgM2S.data.rotation[2]);
+			cVector3d col1(msgM2S.data.rotation[3], msgM2S.data.rotation[4], msgM2S.data.rotation[5]);
+			cVector3d col2(msgM2S.data.rotation[6], msgM2S.data.rotation[7], msgM2S.data.rotation[8]);
 			cMatrix3d rotation(col0, col1, col2);
 
 			// read gripper position
-			double gripperAngle = msgM2S.gripperAngle;
+			double gripperAngle = msgM2S.data.gripperAngle;
 
 			// read linear velocity 
-			cVector3d linearVelocity(msgM2S.linearVelocity[0], msgM2S.linearVelocity[1], msgM2S.linearVelocity[2]);
+			cVector3d linearVelocity(msgM2S.data.linearVelocity[0], msgM2S.data.linearVelocity[1], msgM2S.data.linearVelocity[2]);
 
 			// read angular velocity
-			cVector3d angularVelocity(msgM2S.angularVelocity[0], msgM2S.angularVelocity[1], msgM2S.angularVelocity[2]);
+			cVector3d angularVelocity(msgM2S.data.angularVelocity[0], msgM2S.data.angularVelocity[1], msgM2S.data.angularVelocity[2]);
 
 			// read gripper angular velocity
-			double gripperAngularVelocity = msgM2S.gripperAngularVelocity;
+			double gripperAngularVelocity = msgM2S.data.gripperAngularVelocity;
 
-			unsigned int allSwitches = msgM2S.userSwitches;
+			unsigned int allSwitches = msgM2S.data.userSwitches;
 
 			// read user-switch status (button 0)
 			bool button0, button1, button2, button3;
-			button0 = msgM2S.button0;
-			button1 = msgM2S.button1;
-			button2 = msgM2S.button2;
-			button3 = msgM2S.button3;
+			button0 = msgM2S.data.button0;
+			button1 = msgM2S.data.button1;
+			button2 = msgM2S.data.button2;
+			button3 = msgM2S.data.button3;
 #pragma endregion
 
 			E_recv_s = msgM2S.energy;
-			memcpy(ModifiedSlavePos, msgM2S.position, 3 * sizeof(double));
-			memcpy(ModifiedSlaveVel, msgM2S.linearVelocity, 3 * sizeof(double));
+			memcpy(ModifiedSlavePos, msgM2S.data.position, 3 * sizeof(double));
+			memcpy(ModifiedSlaveVel, msgM2S.data.linearVelocity, 3 * sizeof(double));
 
 #pragma region TDPA
 			// 2. compute Esout and damping
@@ -1185,14 +1185,14 @@ void updateHaptics(void)
 			
 			hapticMessageS2M msgS2M;
 			for (int i = 0; i < 3; i++) {
-				msgS2M.force[i] = UpdatedForceSample[i];// modified by TDPA
-				msgS2M.torque[i] = torque(i);
+				msgS2M.data.force[i] = UpdatedForceSample[i];// modified by TDPA
+				msgS2M.data.torque[i] = torque(i);
 			}
-			msgS2M.gripperForce = gripperForce;
+			msgS2M.data.gripperForce = gripperForce;
 			msgS2M.energy = E_trans_s;
 
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-			msgS2M.time = curtime;
+			msgS2M.timeStamp = curtime;
 			forceQ->push(msgS2M);
 #pragma endregion
 
