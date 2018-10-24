@@ -1,7 +1,8 @@
 	state:
 		the base framework without any algorithm. 
 		successful connect with omnet. 
-		process of send and receive merged into updateHaptics Thread
+		process of send and receive has been merged into updateHaptics Thread
+		TDPA algorithm
 	simulation step:
 		(with omnet)
 			1. open omnet, run socket/omnet.ini
@@ -19,4 +20,5 @@
 		In debug mode, function computeInteractionForces will comsume more than 1ms.
 		So, be careful, it is better to use release mode.
 	future work:
-		add algorithm
+		rebuild the struct of the code
+		add more algorithm

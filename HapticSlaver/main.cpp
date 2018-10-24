@@ -41,6 +41,8 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 //==============================================================================
 #include "commTool.cpp"
+#include "config.h"
+#include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
 //------------------------------------------------------------------------------
@@ -49,7 +51,72 @@ POSSIBILITY OF SUCH DAMAGE.
 //------------------------------------------------------------------------------
 using namespace chai3d;
 //------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// Read Parameters from configuration file
+//------------------------------------------------------------------------------
+ConfigFile cfg("cfg/config.cfg"); // get the configuration file
+double ForceDeadbandParameter = cfg.getValueOfKey<double>("ForceDeadbandParameter"); //deadband parameter for force data reduction, 0.1 is the default value
+double VelocityDeadbandParameter = cfg.getValueOfKey<double>("VelocityDeadbandParameter"); //deadband parameter for velcity data reduction, 0.1 is the default value
+double PositionDeadbandParameter = cfg.getValueOfKey<double>("PositionDeadbandParameter"); //deadband parameter for position data reduction, 0.1 is the default value
 
+int ForceDelay = cfg.getValueOfKey<int>("ForceDelay"); // ms: constant network delay on Force feedback
+int CommandDelay = cfg.getValueOfKey<int>("CommandDelay"); // ms: constant network delay on Commanding channel 
+														   //int RecordSwitch = cfg.getValueOfKey<int>("RecordSignals"); // 0: Turn off recording, 1: Turn on recording
+int RecordSwitch = 1;
+int ControlMode = cfg.getValueOfKey<int>("ControlMode"); // 0: position control, 1:velocity control
+int FlagVelocityKalmanFilter = cfg.getValueOfKey<int>("FlagVelocityKalmanFilter"); // 0: Kalman filter disabled 1: Kalman filter enabled on velocity signal
+
+DeadbandDataReduction* DBForce; // data reduction class for force samples
+DeadbandDataReduction* DBVelocity; // data reduction class for velocity samples
+DeadbandDataReduction* DBPosition; // data reduction class for position samples
+
+bool ForceTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+bool VelocityTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+bool PositionTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
+
+KalmanFilter VelocityKalmanFilter; // applies 3 DoF kalman filtering to remove noise from velocity signal																				   
+
+int ForcePacketNum = 0;
+int VelocityPacketNum = 0;
+int PositionPacketNum = 0;
+//------------------------------------------------------------------------------
+// TDPA variable and function realted code
+//------------------------------------------------------------------------------
+//----------TDPA---------------------
+
+void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3]);
+void initEnergy();
+double sample_interval = 0.001;   //1kHz
+
+double SlaveControlForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
+double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
+double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
+double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
+double alpha_m = 0, beta_s = 0;
+bool TDPAon = true;
+double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
+bool use_tauFilter = false;
+
+double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
+double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
+
+double CurrentForceSample[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
+double UpdatedForceSample[3] = { 0.0,0.0,0.0 };  // updated 3 DoF force sample (holds the signal after deadband)
+double UpdatedVelocitySample[3] = { 0.0,0.0,0.0 }; // update 3 DoF velocity sample (holds the signal after deadband)
+double UpdatedPositionSample[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF position sample (holds the signal after deadband)
+
+double ModifiedSlaveVel[3] = { 0.0, 0.0, 0.0 };
+double ModifiedSlavePos[3] = { 0.0, 0.0, 0.0 };
+
+double MasterForce[3] = { 0.0, 0.0, 0.0 };
+double SlaveForce[3] = { 0.0, 0.0, 0.0 };
+
+
+double PreviousPosition[3] = { 0.0,0.0,0.0 }; // buffer to keep previous position for next iteration
+double PreviousSlaveEnergyIn[3] = { 0.0,0.0,0.0 }; // buffer to keep previous Slave Energy In for next iteration
+double PreviousMasterEnergyIn[3] = { 0.0,0.0,0.0 }; // buffer to keep previous Master Energy In for next iteration
+
+KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
 //------------------------------------------------------------------------------
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
@@ -249,6 +316,11 @@ inline int socketClientInit() {
 		closesocket(sClient);
 		//return 0;
 	}
+
+	unsigned long on_windows = 1;
+	if (ioctlsocket(sClient, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
 }
 //==============================================================================
 /*
@@ -283,7 +355,12 @@ int main(int argc, char* argv[])
 	std::cout << "[q] - Exit application" << std::endl;
 	std::cout << std::endl << std::endl;
 
-	socketServerInit();
+	// initialized deadband classes for force and velocity
+	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
+	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
+	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
+
+	socketClientInit();
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -652,7 +729,10 @@ void updateHaptics(void)
 	simulationFinished = false;
 	char recData[1000];
 	unsigned int unprocessedPtr = 0;
-
+	// Record the initial position of the haptic device
+	PreviousPosition[0] = tool->getGlobalPos().x();
+	PreviousPosition[1] = tool->getGlobalPos().y();
+	PreviousPosition[2] = tool->getGlobalPos().z();
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
@@ -719,12 +799,57 @@ void updateHaptics(void)
 			button2 = msgM2S.button2;
 			button3 = msgM2S.button3;
 
+			E_recv_s = msgM2S.energy;
+			memcpy(ModifiedSlavePos, msgM2S.position, 3 * sizeof(double));
+			memcpy(ModifiedSlaveVel, msgM2S.linearVelocity, 3 * sizeof(double));
+
+
+#pragma region TDPA
+			// 2. compute Esout and damping
+			ComputeEnergy(Es_in, Es_out, ModifiedSlaveVel, SlaveControlForce);
+			if (Es_out > E_recv_s && abs(SlaveControlForce[2]) > 0.001)
+			{
+				beta_s = (Es_out - E_recv_s) / (sample_interval*SlaveControlForce[2] * SlaveControlForce[2]);
+				Es_out = E_recv_s;
+			}
+			else
+				beta_s = 0;
+
+			// 3. revise slave vel 
+			if (TDPAon)
+				ModifiedSlaveVel[2] = ModifiedSlaveVel[2] - beta_s*SlaveControlForce[2];
+#pragma endregion
+
+			if (ControlMode == 1) { // if velocity control mode is selected
+									// Compute tool position using delayed velocity signal
+				if (fabs(ModifiedSlaveVel[0]) < 10 && fabs(ModifiedSlaveVel[1]) < 10 && fabs(ModifiedSlaveVel[2]) < 10) {
+
+					position.x(PreviousPosition[0] + 0.001*ModifiedSlaveVel[0]);
+					position.y(PreviousPosition[1] + 0.001*ModifiedSlaveVel[1]);
+					position.z(PreviousPosition[2] + 0.001*ModifiedSlaveVel[2]);
+
+				}
+				else {
+
+					position.x(PreviousPosition[0]);
+					position.y(PreviousPosition[1]);
+					position.z(PreviousPosition[2]);
+				}
+
+			}
+			else
+			{
+
+				position.x(ModifiedSlavePos[0]);
+				position.y(ModifiedSlavePos[1]);
+				position.z(ModifiedSlavePos[2]);
+			}
 
 			// set the data into toolCursor
 			tool->setDeviceLocalPos(position);
 			tool->setDeviceLocalRot(rotation);
 			tool->setDeviceLocalAngVel(angularVelocity);
-			tool->setDeviceLocalLinVel(linearVelocity);
+			//tool->setDeviceLocalLinVel(linearVelocity);
 			tool->setUserSwitches(allSwitches);
 			tool->setGripperAngleRad(gripperAngle);
 			tool->setGripperAngVel(gripperAngularVelocity);
@@ -732,28 +857,55 @@ void updateHaptics(void)
 			tool->setUserSwitch(1, button1);
 			tool->setUserSwitch(2, button2);
 			tool->setUserSwitch(3, button3);
-			
+			PreviousPosition[0] = position.x();
+			PreviousPosition[1] = position.y();
+			PreviousPosition[2] = position.z();
 			/////////////////////////////////////////////////////////////////////
 			// COMPUTE AND APPLY FORCES
 			/////////////////////////////////////////////////////////////////////
 
 			// compute interaction forces
 			tool->computeInteractionForces();
+			
+
+
+
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
 
+			CurrentForceSample[0] = force.x();
+			CurrentForceSample[1] = force.y();
+			CurrentForceSample[2] = force.z();
+
+			SlaveControlForce[0] = -1 * force.x();
+			SlaveControlForce[1] = -1 * force.y();
+			SlaveControlForce[2] = -1 * force.z();
+
+			// Slave side: Perceptual deadband data reduction is applied
+			DBForce->GetCurrentSample(CurrentForceSample); // pass the current sample for DB data reduction
+			DBForce->ApplyZOHDeadband(UpdatedForceSample, &ForceTransmitFlag); // apply DB data reduction
+
+			if (ForceTransmitFlag == true) {
+				ForcePacketNum++;
+				E_trans_s = Es_in;
+				Es_in_last = Es_in;
+			}
+			else
+			{
+				E_trans_s = Es_in_last;
+			}
 
 			/////////////////////////////////////////////////////////////////////
 			// Send Forces
 			/////////////////////////////////////////////////////////////////////
 			hapticMessageS2M msgS2M;
 			for (int i = 0; i < 3; i++) {
-				msgS2M.force[i] = force(i);
+				msgS2M.force[i] = UpdatedForceSample[i];// modified by TDPA
 				msgS2M.torque[i] = torque(i);
 			}
 			msgS2M.gripperForce = gripperForce;
-			
+			msgS2M.energy = E_trans_s;
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			msgS2M.time = curtime;
 			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
@@ -799,4 +951,28 @@ void updateGraphics(void)
 	GLenum err;
 	err = glGetError();
 	if (err != GL_NO_ERROR) std::cout << "Error:  %s\n" << gluErrorString(err);
+}
+
+
+//-----------TDPA compute energy--------------
+void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3])
+{
+	// only for z direction
+	double power = vel[2] * (-1 * force[2]);
+	if (power >= 0)
+	{
+		Ein = Ein + sample_interval*power;
+	}
+	else
+	{
+		Eout = Eout - sample_interval*power;
+	}
+}
+void initEnergy()
+{
+	SlaveControlForce[0] = SlaveControlForce[0] = SlaveControlForce[0] = 0.0;
+	Em_in = Em_out = Es_in = Es_out = 0;
+	Em_in_last = Es_in_last = 0;
+	E_trans_m = E_trans_s = E_recv_m = E_recv_s = 0;
+	alpha_m = beta_s = 0;
 }
