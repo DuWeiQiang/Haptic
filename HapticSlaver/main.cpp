@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "chai3d.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
+#include <iomanip>
 //------------------------------------------------------------------------------
 using namespace chai3d;
 //------------------------------------------------------------------------------
@@ -68,7 +69,6 @@ bool fullscreen = false;
 // mirrored display
 bool mirroredDisplay = false;
 
-
 //------------------------------------------------------------------------------
 // DECLARED VARIABLES
 //------------------------------------------------------------------------------
@@ -82,18 +82,6 @@ cCamera* camera;
 // a light source to illuminate the objects in the world
 cDirectionalLight *light;
 
-// a label to display the haptic device model
-cLabel* labelHapticDeviceModel;
-
-// a label to display the position [m] of the haptic device
-cLabel* labelHapticDevicePosition;
-
-// a global variable to store the position [m] of the haptic device
-cVector3d hapticDevicePosition;
-
-// a global variable to store the velocity [m/s] of the haptic device
-cVector3d hapticDeviceVelocity;
-
 // a font for rendering text
 cFontPtr font;
 
@@ -102,23 +90,6 @@ cLabel* labelRates;
 
 // a virtual tool representing the haptic device in the scene
 cToolCursor* tool;
-
-//// a small sphere (cursor) representing the haptic device 
-//cShapeSphere* cursor;
-
-// a line representing the velocity of the haptic device
-cShapeLine* velocity;
-
-// a scope to monitor position values of haptic device
-cScope* scope;
-
-// a level widget to display velocity
-cLevel* levelVelocity;
-
-// three dials to display position information
-cDial* dialPosX;
-cDial* dialPosY;
-cDial* dialPosZ;
 
 // a flag for using damping (ON/OFF)
 bool useDamping = false;
@@ -155,13 +126,11 @@ int swapInterval = 1;
 
 WORD sockVersion;
 WSADATA wsaData;
-Sender<hapticMessageS2M> *sender;
-Receiver<hapticMessageM2S> *receiver;
-threadsafe_queue<hapticMessageM2S> *forceQ;
-threadsafe_queue<hapticMessageS2M> *commandQ;
+std::queue<hapticMessageM2S> commandQ;
 SOCKET sClient;
 SOCKET slisten;
 LARGE_INTEGER cpuFreq;
+double delay;// M2S delay
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -191,10 +160,6 @@ inline int socketServerInit() {
 	QueryPerformanceFrequency(&cpuFreq);
 	//初始化WSA  
 	sockVersion = MAKEWORD(2, 2);
-
-	forceQ = new threadsafe_queue<hapticMessageM2S>();
-	commandQ = new threadsafe_queue<hapticMessageS2M>();
-
 
 	if (WSAStartup(sockVersion, &wsaData) != 0)
 	{
@@ -240,30 +205,10 @@ inline int socketServerInit() {
 	}
 	printf("接受到一个连接：%s:%d \r\n", inet_ntoa(remoteAddr.sin_addr), ntohs(remoteAddr.sin_port));
 
-	sender = new Sender<hapticMessageS2M>();
-	receiver = new Receiver<hapticMessageM2S>();
-	sender->s = sClient;
-	sender->Q = commandQ;
-	receiver->s = sClient;
-	receiver->Q = forceQ;
-	unsigned  uiThread1ID;
-	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
-		0,             // stack size
-		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-		sender,           // arg list holding the "this" pointer
-		CREATE_SUSPENDED, // so we can later call ResumeThread()
-		&uiThread1ID);
-	ResumeThread(hth1);
-	// From here on there are two separate threads executing
-	// our one program.
-	unsigned  uiThread2ID;
-	HANDLE hth2 = (HANDLE)_beginthreadex(NULL, // security
-		0,             // stack size
-		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-		receiver,           // arg list holding the "this" pointer
-		CREATE_SUSPENDED, // so we can later call ResumeThread()
-		&uiThread2ID);
-	ResumeThread(hth2);
+	unsigned long on_windows = 1;
+	if (ioctlsocket(sClient, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
 }
 
 inline int socketClientInit() {
@@ -272,11 +217,6 @@ inline int socketClientInit() {
 	//--------------------------------------------------------------------------
 	QueryPerformanceFrequency(&cpuFreq);
 	sockVersion = MAKEWORD(2, 2);
-	sender = new Sender<hapticMessageS2M>();
-	receiver = new Receiver<hapticMessageM2S>();
-	forceQ = new threadsafe_queue<hapticMessageM2S>();
-	commandQ = new threadsafe_queue<hapticMessageS2M>();
-
 
 	if (WSAStartup(sockVersion, &wsaData) != 0)
 	{
@@ -309,30 +249,6 @@ inline int socketClientInit() {
 		closesocket(sClient);
 		//return 0;
 	}
-
-
-	sender->s = sClient;
-	sender->Q = commandQ;
-	receiver->s = sClient;
-	receiver->Q = forceQ;
-	unsigned  uiThread1ID;
-	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
-		0,             // stack size
-		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-		sender,           // arg list holding the "this" pointer
-		CREATE_SUSPENDED, // so we can later call ResumeThread()
-		&uiThread1ID);
-	ResumeThread(hth1);
-	// From here on there are two separate threads executing
-	// our one program.
-	unsigned  uiThread2ID;
-	HANDLE hth2 = (HANDLE)_beginthreadex(NULL, // security
-		0,             // stack size
-		ThreadX::ThreadStaticEntryPoint,// entry-point-function
-		receiver,           // arg list holding the "this" pointer
-		CREATE_SUSPENDED, // so we can later call ResumeThread()
-		&uiThread2ID);
-	ResumeThread(hth2);
 }
 //==============================================================================
 /*
@@ -367,7 +283,7 @@ int main(int argc, char* argv[])
 	std::cout << "[q] - Exit application" << std::endl;
 	std::cout << std::endl << std::endl;
 
-	socketClientInit();
+	socketServerInit();
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -488,17 +404,6 @@ int main(int argc, char* argv[])
 	// define direction of light beam
 	light->setDir(-1.0, 0.0, 0.0);
 
-	//// create a sphere (cursor) to represent the haptic device
-	//cursor = new cShapeSphere(0.01);
-
-	//// insert cursor inside world
-	//world->addChild(cursor);
-
-	// create small line to illustrate the velocity of the haptic device
-	velocity = new cShapeLine(cVector3d(0, 0, 0), cVector3d(0, 0, 0));
-
-	// insert line inside world
-	world->addChild(velocity);
 	////////////////////////////////////////////////////////////////////////////
 	//// retrieve information about the current haptic device
 	//cHapticDeviceInfo info = hapticDevice->getSpecifications();-------------------operated by master
@@ -531,49 +436,6 @@ int main(int argc, char* argv[])
 	// start the haptic tool
 	//tool->start();-------------------operated by master
 
-	hapticMessageM2S msgM2S = *forceQ->wait_and_pop();
-	std::cout << "helloworld";
-	// read position 
-	cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
-
-	// read orientation 
-	cVector3d col0(msgM2S.rotation[0], msgM2S.rotation[1], msgM2S.rotation[2]);
-	cVector3d col1(msgM2S.rotation[3], msgM2S.rotation[4], msgM2S.rotation[5]);
-	cVector3d col2(msgM2S.rotation[6], msgM2S.rotation[7], msgM2S.rotation[8]);
-	cMatrix3d rotation(col0, col1, col2);
-
-	// read gripper position
-	double gripperAngle = msgM2S.gripperAngle;
-
-	// read linear velocity 
-	cVector3d linearVelocity(msgM2S.linearVelocity[0], msgM2S.linearVelocity[1], msgM2S.linearVelocity[2]);
-
-	// read angular velocity
-	cVector3d angularVelocity(msgM2S.angularVelocity[0], msgM2S.angularVelocity[1], msgM2S.angularVelocity[2]);
-
-	// read gripper angular velocity
-	double gripperAngularVelocity = msgM2S.gripperAngularVelocity;
-
-	unsigned int allSwitches = msgM2S.userSwitches;
-
-	// read user-switch status (button 0)
-	bool button0, button1, button2, button3;
-	button0 = msgM2S.button0;
-	button1 = msgM2S.button1;
-	button2 = msgM2S.button2;
-	button3 = msgM2S.button3;
-
-	tool->setDeviceGlobalPos(position);
-	tool->setDeviceLocalRot(rotation);
-	tool->setDeviceLocalAngVel(angularVelocity);
-	tool->setDeviceLocalLinVel(linearVelocity);
-	tool->setUserSwitches(allSwitches);
-	tool->setGripperAngleRad(gripperAngle);
-	tool->setGripperAngVel(gripperAngularVelocity);
-	tool->setUserSwitch(0, button0);
-	tool->setUserSwitch(1, button1);
-	tool->setUserSwitch(2, button2);
-	tool->setUserSwitch(3, button3);
 	tool->m_hapticPoint->initialize();
 
 	//todo  transmit haptic device at first
@@ -582,7 +444,7 @@ int main(int argc, char* argv[])
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
 	double workspaceScaleFactor = 25;//tool->getWorkspaceScaleFactor();
-
+	// hapticDeviceInfo.m_workspaceRadius----->0.04
 	// stiffness properties
 	double maxStiffness = 120;// hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;
 
@@ -625,73 +487,10 @@ int main(int argc, char* argv[])
 	// create a font
 	font = NEW_CFONTCALIBRI20();
 
-	// create a label to display the haptic device model
-	labelHapticDeviceModel = new cLabel(font);
-	camera->m_frontLayer->addChild(labelHapticDeviceModel);
-	labelHapticDeviceModel->setText("falcon");
-
-	// create a label to display the position of haptic device
-	labelHapticDevicePosition = new cLabel(font);
-	camera->m_frontLayer->addChild(labelHapticDevicePosition);
-
 	// create a label to display the haptic and graphic rate of the simulation
 	labelRates = new cLabel(font);
 	camera->m_frontLayer->addChild(labelRates);
-
-
 	
-
-	////////////////////////////////////////////////////////////////////////////
-	// In the following lines we set up several widgets to display position
-	// and velocity data coming from the haptic device. For each widget we
-	// define a range of values to expect from the haptic device. In this
-	// example the units are meters (as we are tracking a position signal!) and 
-	// have a set a default range between -0.1 to 0.1 meters. If you are using 
-	// devices with a small or larger workspace, you may want to adjust these 
-	// values accordingly. The other settings will modify the visual appearance
-	// of the widgets. Have fun playing with these values!
-	////////////////////////////////////////////////////////////////////////////
-
-	// create a scope to plot haptic device position data
-	scope = new cScope();
-	camera->m_frontLayer->addChild(scope);
-	scope->setLocalPos(100, 60);
-	scope->setRange(-2.5, 2.5);
-	scope->setSignalEnabled(true, true, true, false);
-	scope->setTransparencyLevel(0.7);
-
-	// create a level to display velocity data
-	levelVelocity = new cLevel();
-	camera->m_frontLayer->addChild(levelVelocity);
-	levelVelocity->setLocalPos(20, 60);
-	levelVelocity->setRange(0.0, 25.0);
-	levelVelocity->setWidth(40);
-	levelVelocity->setNumIncrements(46);
-	levelVelocity->setSingleIncrementDisplay(false);
-	levelVelocity->setTransparencyLevel(0.5);
-
-	// three dials to display position data
-	dialPosX = new cDial();
-	camera->m_frontLayer->addChild(dialPosX);
-	dialPosX->setLocalPos(750, 200);
-	dialPosX->setRange(-2.5, 2.5);
-	dialPosX->setSize(40);
-	dialPosX->setSingleIncrementDisplay(true);
-
-	dialPosY = new cDial();
-	camera->m_frontLayer->addChild(dialPosY);
-	dialPosY->setLocalPos(750, 140);
-	dialPosY->setRange(-2.5, 2.5);
-	dialPosY->setSize(40);
-	dialPosY->setSingleIncrementDisplay(true);
-
-	dialPosZ = new cDial();
-	camera->m_frontLayer->addChild(dialPosZ);
-	dialPosZ->setLocalPos(750, 80);
-	dialPosZ->setRange(-2.5, 2.5);
-	dialPosZ->setSize(40);
-	dialPosZ->setSingleIncrementDisplay(true);
-
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -702,7 +501,6 @@ int main(int argc, char* argv[])
 
 	// setup callback when application exits
 	atexit(close);
-
 
 	//--------------------------------------------------------------------------
 	// MAIN GRAPHIC LOOP
@@ -745,20 +543,6 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
 	// update window size
 	width = a_width;
 	height = a_height;
-
-	// update position of label
-	labelHapticDevicePosition->setLocalPos(20, width - 60, 0);
-
-	// update position of label
-	labelHapticDeviceModel->setLocalPos(20, height - 40, 0);
-
-	// update position of scope
-	scope->setSize(width - 200, 180);
-
-	// update position of dials
-	dialPosX->setLocalPos(width - 50, 210);
-	dialPosY->setLocalPos(width - 50, 150);
-	dialPosZ->setLocalPos(width - 50, 90);
 }
 
 //------------------------------------------------------------------------------
@@ -858,62 +642,16 @@ void close(void)
 
 //------------------------------------------------------------------------------
 
-void updateGraphics(void)
-{
-	/////////////////////////////////////////////////////////////////////
-	// UPDATE WIDGETS
-	/////////////////////////////////////////////////////////////////////
 
-	// update position data
-	labelHapticDevicePosition->setText(hapticDevicePosition.str(3));
-
-	// update haptic and graphic rate data
-	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz");
-
-	// update position of label
-	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
-
-	// update information to scope
-	scope->setSignalValues(hapticDevicePosition.x(),
-		hapticDevicePosition.y(),
-		hapticDevicePosition.z());
-
-	// update information to dials
-	dialPosX->setValue(hapticDevicePosition.x());
-	dialPosY->setValue(hapticDevicePosition.y());
-	dialPosZ->setValue(hapticDevicePosition.z());
-
-	// update velocity information to level
-	levelVelocity->setValue(hapticDeviceVelocity.length());
-
-
-	/////////////////////////////////////////////////////////////////////
-	// RENDER SCENE
-	/////////////////////////////////////////////////////////////////////
-
-	// update shadow maps (if any)
-	world->updateShadowMaps(false, mirroredDisplay);
-
-	// render world
-	camera->renderView(width, height);
-
-	// wait until all OpenGL commands are completed
-	glFinish();
-
-	// check for any OpenGL errors
-	GLenum err;
-	err = glGetError();
-	if (err != GL_NO_ERROR) std::cout << "Error:  %s\n" << gluErrorString(err);
-}
 
 //------------------------------------------------------------------------------
-
 void updateHaptics(void)
 {
 	// simulation in nowTimes running
 	simulationRunning = true;
 	simulationFinished = false;
+	char recData[1000];
+	unsigned int unprocessedPtr = 0;
 
 	// main haptic simulation loop
 	while (simulationRunning)
@@ -924,11 +662,33 @@ void updateHaptics(void)
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
 		hapticMessageM2S msgM2S;
-		if (!forceQ->empty()) {
+
+		int ret = recv(sClient, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0);
+		if (ret>0) {
+			
+			// we receive some char data and transform it to hapticMessageM2S.
+			unprocessedPtr += ret;
+
+			unsigned int hapticMsgL = sizeof(hapticMessageM2S);
+			for (unsigned int i = 0; i < unprocessedPtr / hapticMsgL; i++) {
+				commandQ.push(*(hapticMessageM2S*)(recData + i* hapticMsgL));
+			}
+			unsigned int processedPtr = (unprocessedPtr / hapticMsgL) * hapticMsgL;
+			unprocessedPtr %= hapticMsgL;
+
+			for (unsigned int i = 0; i < unprocessedPtr; i++) {
+				recData[i] = recData[processedPtr + i];
+			}
+		}
+		if (commandQ.size()) {
+			msgM2S = commandQ.front();
+			commandQ.pop();
+
+			//calculate M2S delay
 			__int64 curtime;
-			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-			forceQ->try_pop(msgM2S);
-			std::cout << ((double)(curtime - msgM2S.time) / (double)cpuFreq.QuadPart) * 1000 << std::endl;
+			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);			
+			delay = ((double)(curtime - msgM2S.time) / (double)cpuFreq.QuadPart) * 1000;
+
 			// read position 
 			cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
 
@@ -959,7 +719,9 @@ void updateHaptics(void)
 			button2 = msgM2S.button2;
 			button3 = msgM2S.button3;
 
-			tool->setDeviceGlobalPos(position);
+
+			// set the data into toolCursor
+			tool->setDeviceLocalPos(position);
 			tool->setDeviceLocalRot(rotation);
 			tool->setDeviceLocalAngVel(angularVelocity);
 			tool->setDeviceLocalLinVel(linearVelocity);
@@ -970,80 +732,21 @@ void updateHaptics(void)
 			tool->setUserSwitch(1, button1);
 			tool->setUserSwitch(2, button2);
 			tool->setUserSwitch(3, button3);
-
-
-			/////////////////////////////////////////////////////////////////////
-			// UPDATE 3D CURSOR MODEL
-			/////////////////////////////////////////////////////////////////////
-
-			// update arrow
-			velocity->m_pointA = position;
-			velocity->m_pointB = cAdd(position, linearVelocity);
-
-			// update position and orientation of cursor
-			//cursor->setLocalPos(position);
-			//cursor->setLocalRot(rotation);
-
-			// adjust the  color of the cursor according to the status of
-			// the user-switch (ON = TRUE / OFF = FALSE)
-			if (button0)
-			{
-				tool->m_material->setGreenMediumAquamarine();
-				//cursor->m_material->setGreenMediumAquamarine();
-			}
-			else if (button1)
-			{
-				tool->m_material->setYellowGold();
-				//cursor->m_material->setYellowGold();
-			}
-			else if (button2)
-			{
-				tool->m_material->setOrangeCoral();
-				//cursor->m_material->setOrangeCoral();
-			}
-			else if (button3)
-			{
-				tool->m_material->setPurpleLavender();
-				//cursor->m_material->setPurpleLavender();
-			}
-			else
-			{
-				tool->m_material->setBlueRoyal();
-				//cursor->m_material->setBlueRoyal();
-			}
-
-			// update global variable for graphic display update
-			hapticDevicePosition = position;
-			hapticDeviceVelocity = linearVelocity;
-
-
+			
 			/////////////////////////////////////////////////////////////////////
 			// COMPUTE AND APPLY FORCES
 			/////////////////////////////////////////////////////////////////////
 
 			// compute interaction forces
 			tool->computeInteractionForces();
-
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
 
-			//// apply force field
-			//if (useForceField)
-			//{
-			//	// compute linear force
-			//	double Kp = 25; // [N/m]
-			//	cVector3d forceField = -Kp * position;
-			//	force.add(forceField);
 
-			//	// compute angular torque
-			//	double Kr = 0.05; // [N/m.rad]
-			//	cVector3d axis;
-			//	double angle;
-			//	rotation.toAxisAngle(axis, angle);
-			//	torque = (-Kr * angle) * axis;
-			//}
-
+			/////////////////////////////////////////////////////////////////////
+			// Send Forces
+			/////////////////////////////////////////////////////////////////////
 			hapticMessageS2M msgS2M;
 			for (int i = 0; i < 3; i++) {
 				msgS2M.force[i] = force(i);
@@ -1053,10 +756,12 @@ void updateHaptics(void)
 			
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			msgS2M.time = curtime;
-			commandQ->push(msgS2M);
+			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
+			freqCounterHaptics.signal(1);
 		}
 		// update frequency counter
-		freqCounterHaptics.signal(1);
+		
+		
 	}
 
 	// exit haptics thread
@@ -1064,3 +769,34 @@ void updateHaptics(void)
 }
 
 //------------------------------------------------------------------------------
+void updateGraphics(void)
+{
+	/////////////////////////////////////////////////////////////////////
+	// UPDATE WIDGETS
+	/////////////////////////////////////////////////////////////////////
+
+	// update haptic and graphic rate data
+	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
+		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "M2S delay:" + cStr(delay, 3));
+
+	// update position of label
+	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
+
+	/////////////////////////////////////////////////////////////////////
+	// RENDER SCENE
+	/////////////////////////////////////////////////////////////////////
+
+	// update shadow maps (if any)
+	world->updateShadowMaps(false, mirroredDisplay);
+
+	// render world
+	camera->renderView(width, height);
+
+	// wait until all OpenGL commands are completed
+	glFinish();
+
+	// check for any OpenGL errors
+	GLenum err;
+	err = glGetError();
+	if (err != GL_NO_ERROR) std::cout << "Error:  %s\n" << gluErrorString(err);
+}

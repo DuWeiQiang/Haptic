@@ -54,6 +54,11 @@ public:
 	threadsafe_queue() {}
 	~threadsafe_queue() {}
 
+	int length() {
+		std::lock_guard<std::mutex> lk(mut);            // 1.全局加锁
+		return data_queue.size();
+	}
+
 	void push(T new_data)
 	{
 		std::lock_guard<std::mutex> lk(mut);            // 1.全局加锁
@@ -149,13 +154,15 @@ public:
 private:
 	void ThreadEntryPoint() {
 		printf("Sender Thread\n");
-		while (true) {
-			if (!Q->empty()) {
+		while (true) {T temp;
+			if (Q->try_pop(temp)) {
 				//std::cout << "Sender helloworld" << sizeof(hapticMessageM2S) << std::endl;
-				T temp;
-				Q->try_pop(temp);
+				
+				
 				send(s, (char *)&temp, sizeof(T), 0);
 			}
+			Sleep(1);
+			//std::this_thread::sleep_for(std::chrono::microseconds(500));
 		}
 	}
 	virtual ~Sender() {};
@@ -188,6 +195,8 @@ private:
 					recData[i] = recData[processedPtr + i];
 				}
 			}
+			Sleep(1);
+			//std::this_thread::sleep_for(std::chrono::microseconds(500));
 		}
 	}
 	virtual ~Receiver() {};

@@ -14,6 +14,8 @@
 #include <memory>
 #include <condition_variable>
 
+#ifndef COMMTOOL
+#define COMMTOOL
 
 struct hapticMessageM2S {
 	__int64 time;
@@ -56,7 +58,10 @@ class threadsafe_queue
 public:
 	threadsafe_queue() {}
 	~threadsafe_queue() {}
-
+	int length() {
+		std::lock_guard<std::mutex> lk(mut);            // 1.全局加锁
+		return data_queue.size();
+	}
 	void push(T new_data)
 	{
 		std::lock_guard<std::mutex> lk(mut);            // 1.全局加锁
@@ -107,7 +112,7 @@ private:
 	std::mutex mut;
 	std::condition_variable cond;
 };
-
+#include<windows.h>  
 
 
 
@@ -117,7 +122,7 @@ class ThreadX
 public:
 	SOCKET s;
 	int N;
-	
+
 	// In C++ you must employ a free (C) function or a static
 	// class member function as the thread entry-point-function.
 	ThreadX() {
@@ -149,14 +154,14 @@ class Sender :public ThreadX
 {
 public:
 	threadsafe_queue<T> *Q;
-private:	
+private:
 	void ThreadEntryPoint() {
 		printf("Sender Thread\n");
 		while (true) {
-			if (!Q->empty()) {
-				//std::cout << "Sender helloworld" << sizeof(hapticMessageM2S) << std::endl;
-				T temp;
-				Q->try_pop(temp);
+			T temp;
+			if (Q->try_pop(temp)) {
+
+
 				send(s, (char *)&temp, sizeof(T), 0);
 			}
 		}
@@ -191,8 +196,14 @@ private:
 					recData[i] = recData[processedPtr + i];
 				}
 			}
+			Sleep(1);
+			//std::this_thread::sleep_for(std::chrono::microseconds(500));
 		}
 	}
 	virtual ~Receiver() {};
 };
+
+#endif // !COMMTOOL
+
+
 
