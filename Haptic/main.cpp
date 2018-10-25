@@ -103,6 +103,25 @@ double UpdatedForceSample[3] = { 0.0,0.0,0.0 };  // updated 3 DoF force sample (
 double UpdatedVelocitySample[3] = { 0.0,0.0,0.0 }; // update 3 DoF velocity sample (holds the signal after deadband)
 double UpdatedPositionSample[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF position sample (holds the signal after deadband)
 KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
+
+//----------ISS------------------------
+inline void ISSVelocityRevise(double* vel, double d_force, double mu, double factor);
+inline void ISSForceRevise(double * force, double d_force, double tau);
+double mu_max = 10;
+float stiff_factor = 0.5;
+double d_force = 0.0;
+double tau = 0.005;
+bool ISS_enabled = 0;
+bool PassDB_enable = 0;
+bool ISS_delay = 0;
+double last_force = 0.0;
+float mu_factor = 1.7;
+double last_vel_slave = 0.0, last_vel_master = 0.0;
+double last_force_master = 0.0, last_force_slave = 0.0;
+double u_init = 0.01;
+double um_max = u_init, um_max_neg = u_init;
+double us_max = u_init, us_max_neg = u_init;
+bool isContact = 0;
 //------------------------------------------------------------------------------
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
@@ -358,7 +377,9 @@ int main(int argc, char* argv[])
 
 	// start the haptic tool
 	tool->start();
-
+	
+	//120 is maxStiffness
+	mu_max = 120*stiff_factor;
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -698,6 +719,14 @@ void updateHaptics(void)
 		button2 = tool->getUserSwitch(2);
 		button3 = tool->getUserSwitch(3);
 
+#pragma region ISS
+		//----------------------------ISS velocity revising------------------------------------			
+		if (ISS_enabled)
+		{
+			ISSVelocityRevise(MasterVelocity, d_force, mu_max, mu_factor);
+		}
+#pragma endregion
+
 #pragma region calculate velocity and Ein used to create M2S message
 		for (int i = 0; i < 3; i++) {
 			MasterVelocity[i] = linearVelocity(i);
@@ -737,6 +766,9 @@ void updateHaptics(void)
 			//---passive deadband-----
 		}
 #pragma endregion
+
+
+
 
 #pragma region create message and send it
 		/////////////////////////////////////////////////////////////////////
@@ -841,6 +873,18 @@ void updateHaptics(void)
 				MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
 			}
 #pragma endregion
+
+#pragma region ISS
+			//----------ISS force revising------------------------------------------
+			if (ISS_enabled)
+			{
+				d_force = (MasterForce[2] - last_force) / 0.001;  // get derivation of force respect to time 
+				last_force = MasterForce[2];
+				ISSForceRevise(MasterForce, d_force, tau);
+			}
+#pragma endregion
+
+
 			cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2] - MasterVelocity[2] * 0.15);
 			cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
 			double gripperForce = msgS2M.gripperForce;
@@ -914,4 +958,15 @@ void initEnergy()
 	Em_in_last = Es_in_last = 0;
 	E_trans_m = E_trans_s = E_recv_m = E_recv_s = 0;
 	alpha_m = beta_s = 0;
+}
+
+//-----------------for ISS control---------------------
+inline void ISSVelocityRevise(double* vel, double d_force, double mu, double factor)
+{
+	vel[2] = vel[2] + d_force / (mu*factor);
+}
+
+inline void ISSForceRevise(double * force, double d_force, double tau)
+{
+	force[2] = force[2] + d_force*tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
 }

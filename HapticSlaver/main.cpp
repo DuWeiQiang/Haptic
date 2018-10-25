@@ -89,10 +89,10 @@ void initEnergy();
 double sample_interval = 0.001;   //1kHz
 
 double SlaveControlForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
-double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
-double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
-double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
-double alpha_m = 0, beta_s = 0;
+double Es_in = 0, Es_out = 0;
+double Es_in_last = 0;   // last transmitted master/slave input energy
+double E_trans_s = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
+double beta_s = 0;
 bool TDPAon = true;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
 bool use_tauFilter = false;
@@ -102,19 +102,14 @@ double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sa
 
 double CurrentForceSample[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 double UpdatedForceSample[3] = { 0.0,0.0,0.0 };  // updated 3 DoF force sample (holds the signal after deadband)
-double UpdatedVelocitySample[3] = { 0.0,0.0,0.0 }; // update 3 DoF velocity sample (holds the signal after deadband)
-double UpdatedPositionSample[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF position sample (holds the signal after deadband)
 
 double ModifiedSlaveVel[3] = { 0.0, 0.0, 0.0 };
 double ModifiedSlavePos[3] = { 0.0, 0.0, 0.0 };
 
-double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double SlaveForce[3] = { 0.0, 0.0, 0.0 };
 
-
 double PreviousPosition[3] = { 0.0,0.0,0.0 }; // buffer to keep previous position for next iteration
-double PreviousSlaveEnergyIn[3] = { 0.0,0.0,0.0 }; // buffer to keep previous Slave Energy In for next iteration
-double PreviousMasterEnergyIn[3] = { 0.0,0.0,0.0 }; // buffer to keep previous Master Energy In for next iteration
+
 
 KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
 //------------------------------------------------------------------------------
@@ -971,8 +966,8 @@ void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3])
 void initEnergy()
 {
 	SlaveControlForce[0] = SlaveControlForce[0] = SlaveControlForce[0] = 0.0;
-	Em_in = Em_out = Es_in = Es_out = 0;
-	Em_in_last = Es_in_last = 0;
-	E_trans_m = E_trans_s = E_recv_m = E_recv_s = 0;
-	alpha_m = beta_s = 0;
+	Es_in = Es_out = 0;
+	Es_in_last = 0;
+	E_trans_s = E_recv_s = 0;
+	beta_s = 0;
 }
