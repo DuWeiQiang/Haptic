@@ -93,7 +93,7 @@ double Es_in = 0, Es_out = 0;
 double Es_in_last = 0;   // last transmitted master/slave input energy
 double E_trans_s = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
 double beta_s = 0;
-bool TDPAon = true;
+bool TDPAon = false;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
 bool use_tauFilter = false;
 
@@ -484,7 +484,7 @@ int main(int argc, char* argv[])
 	tool = new cToolCursor(world);
 	world->addChild(tool);
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(1.0);
+	tool->setWorkspaceRadius(1.3);
 
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
@@ -510,6 +510,11 @@ int main(int argc, char* argv[])
 
 	tool->m_hapticPoint->initialize();
 
+	tool->m_material->m_ambient.set(1.0, 1.0, 1.0);
+	tool->m_material->m_diffuse.set(1.0, 1.0, 1.0);
+	tool->m_material->m_specular.set(1.0, 1.0, 1.0);
+	tool->setTransparencyLevel(1);
+
 	//todo  transmit haptic device at first
 	////////////////////////////////////////////////////////////////////////////
 
@@ -531,21 +536,31 @@ int main(int argc, char* argv[])
 	world->addChild(base);
 
 	// build mesh using a cylinder primitive
-	cCreateCylinder(base,
-		0.01,
-		0.5,
-		36,
-		1,
-		10,
-		true,
-		true,
-		cVector3d(0.0, 0.0, -0.01),
-		cMatrix3d(cDegToRad(0), cDegToRad(0), cDegToRad(0), C_EULER_ORDER_XYZ)
-	);
+	//cCreateCylinder(base,
+	//	0.01,
+	//	0.5,
+	//	36,
+	//	1,
+	//	10,
+	//	true,
+	//	true,
+	//	cVector3d(0.0, 0.0, -0.01),
+	//	cMatrix3d(cDegToRad(0), cDegToRad(0), cDegToRad(0), C_EULER_ORDER_XYZ)
+	//);
+
+	double groundSize = 0.5;
+	int vertices0 = base->newVertex(-groundSize, -groundSize, 0.0);
+	int vertices1 = base->newVertex(groundSize, -groundSize, 0.0);
+	int vertices2 = base->newVertex(groundSize, groundSize, 0.0);
+	int vertices3 = base->newVertex(-groundSize, groundSize, 0.0);
+
+	// compose surface with 2 triangles
+	base->newTriangle(vertices0, vertices1, vertices2);
+	base->newTriangle(vertices0, vertices2, vertices3);
 
 	// set material properties
 	base->m_material->setGrayGainsboro();
-	base->m_material->setStiffness(0.5 * maxStiffness);
+	base->m_material->setStiffness(46);
 
 	// build collision detection tree
 	base->createAABBCollisionDetector(toolRadius);

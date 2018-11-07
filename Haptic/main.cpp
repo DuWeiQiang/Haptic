@@ -93,9 +93,9 @@ double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
 double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
 double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
 double alpha_m = 0, beta_s = 0;
-bool TDPAon = true;
+bool TDPAon = false;
 double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
-bool use_tauFilter = false;
+bool use_tauFilter = true;
 double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
@@ -111,7 +111,7 @@ double mu_max = 10;
 float stiff_factor = 0.5;
 double d_force = 0.0;
 double tau = 0.005;
-bool ISS_enabled = 0;
+bool ISS_enabled = true;
 bool PassDB_enable = 0;
 bool ISS_delay = 0;
 double last_force = 0.0;
@@ -379,7 +379,7 @@ int main(int argc, char* argv[])
 	tool->start();
 	
 	//120 is maxStiffness
-	mu_max = 120*stiff_factor;
+	mu_max = 46;
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -719,6 +719,13 @@ void updateHaptics(void)
 		button2 = tool->getUserSwitch(2);
 		button3 = tool->getUserSwitch(3);
 
+
+
+#pragma region calculate velocity and Ein used to create M2S message
+		for (int i = 0; i < 3; i++) {
+			MasterVelocity[i] = linearVelocity(i);
+			MasterPosition[i] = position(i);
+		}
 #pragma region ISS
 		//----------------------------ISS velocity revising------------------------------------			
 		if (ISS_enabled)
@@ -726,13 +733,6 @@ void updateHaptics(void)
 			ISSVelocityRevise(MasterVelocity, d_force, mu_max, mu_factor);
 		}
 #pragma endregion
-
-#pragma region calculate velocity and Ein used to create M2S message
-		for (int i = 0; i < 3; i++) {
-			MasterVelocity[i] = linearVelocity(i);
-			MasterPosition[i] = position(i);
-		}
-
 		if (FlagVelocityKalmanFilter == 1) {
 			// Apply Kalman filtering to remove the noise on velocity signal
 			VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
@@ -800,12 +800,10 @@ void updateHaptics(void)
 		/////////////////////////////////////////////////////////////////////
 		// push into send queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
+		beginTime = curtime;
+		send(sServer, (char *)&msgM2S, sizeof(hapticMessageM2S), 0);
+		freqCounterHaptics.signal(1);
 
-		if ((((double)(curtime - beginTime) / (double)cpuFreq.QuadPart) * 1000) >= 1) {
-			beginTime = curtime;
-			send(sServer, (char *)&msgM2S, sizeof(hapticMessageM2S), 0);
-			freqCounterHaptics.signal(1);
-		}
 #pragma endregion
 
 		
@@ -815,16 +813,23 @@ void updateHaptics(void)
 /////////////////////////////////////////////////////////////////////
 		hapticMessageS2M msgS2M;
 
+
 		int ret = recv(sServer, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0);
+
+		
 
 		if (ret > 0) {
 			// we receive some char data and transform it to hapticMessageM2S.
 			unprocessedPtr += ret;
 
 			unsigned int hapticMsgL = sizeof(hapticMessageS2M);
-			for (unsigned int i = 0; i < unprocessedPtr / hapticMsgL; i++) {
+			unsigned int i = 0;
+			for (; i < unprocessedPtr / hapticMsgL - 1; i++) {
 				forceQ.push(*(hapticMessageS2M*)(recData + i* hapticMsgL));
 			}
+			std::queue<hapticMessageS2M> empty;
+			forceQ.swap(empty);
+			forceQ.push(*(hapticMessageS2M*)(recData + i* hapticMsgL));
 			unsigned int processedPtr = (unprocessedPtr / hapticMsgL) * hapticMsgL;
 			unprocessedPtr %= hapticMsgL;
 
@@ -832,6 +837,7 @@ void updateHaptics(void)
 				recData[i] = recData[processedPtr + i];
 			}
 		}
+		
 		if (forceQ.size()) {
 			msgS2M = forceQ.front();
 			forceQ.pop();
@@ -891,8 +897,9 @@ void updateHaptics(void)
 			tool->setDeviceLocalForce(force);
 			tool->setDeviceLocalTorque(torque);
 			tool->setGripperForce(gripperForce);
-			tool->applyToDevice();
-		}
+			
+		}tool->applyToDevice();
+
 #pragma endregion
 
 
@@ -912,7 +919,7 @@ void updateGraphics(void)
 
 	// update haptic and graphic rate data
 	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz    S2M delay" + cStr(delay, 3) + " ");
+		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz    S2M delay" + cStr(delay, 0) + " ");
 
 	// update position of label
 	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
