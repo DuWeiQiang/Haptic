@@ -111,7 +111,7 @@ double mu_max = 10;
 float stiff_factor = 0.5;
 double d_force = 0.0;
 double tau = 0.005;
-bool ISS_enabled = true;
+bool ISS_enabled = false;
 bool PassDB_enable = 0;
 bool ISS_delay = 0;
 double last_force = 0.0;
@@ -628,6 +628,10 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	{
 		mirroredDisplay = !mirroredDisplay;
 		camera->setMirrorVertical(mirroredDisplay);
+	}
+
+	else if (a_key == GLFW_KEY_I) {
+		ISS_enabled = !ISS_enabled;
 	}
 }
 
