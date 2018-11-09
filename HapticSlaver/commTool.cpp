@@ -17,6 +17,8 @@
 #ifndef COMMTOOL
 #define COMMTOOL
 
+enum AlgorithmType{ AT_None, AT_TDPA, AT_ISS, AT_MMT};
+
 struct hapticMessageM2S {
 	__int64 time;
 
@@ -44,6 +46,8 @@ struct hapticMessageM2S {
 	
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
+
+	AlgorithmType ATypeChange;
 };
 
 

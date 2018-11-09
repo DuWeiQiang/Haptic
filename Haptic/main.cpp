@@ -53,75 +53,120 @@ using namespace chai3d;
 //using namespace std; //std namespace contains bind function which conflicts with socket bind function
 //------------------------------------------------------------------------------
 
-
 //------------------------------------------------------------------------------
 // Read Parameters from configuration file
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
 ConfigFile cfg("cfg/config.cfg"); // get the configuration file
-double ForceDeadbandParameter = cfg.getValueOfKey<double>("ForceDeadbandParameter"); //deadband parameter for force data reduction, 0.1 is the default value
 double VelocityDeadbandParameter = cfg.getValueOfKey<double>("VelocityDeadbandParameter"); //deadband parameter for velcity data reduction, 0.1 is the default value
 double PositionDeadbandParameter = cfg.getValueOfKey<double>("PositionDeadbandParameter"); //deadband parameter for position data reduction, 0.1 is the default value
 
-int ForceDelay = cfg.getValueOfKey<int>("ForceDelay"); // ms: constant network delay on Force feedback
-int CommandDelay = cfg.getValueOfKey<int>("CommandDelay"); // ms: constant network delay on Commanding channel 
-														   //int RecordSwitch = cfg.getValueOfKey<int>("RecordSignals"); // 0: Turn off recording, 1: Turn on recording
-int RecordSwitch = 1;
-int ControlMode = cfg.getValueOfKey<int>("ControlMode"); // 0: position control, 1:velocity control
 int FlagVelocityKalmanFilter = cfg.getValueOfKey<int>("FlagVelocityKalmanFilter"); // 0: Kalman filter disabled 1: Kalman filter enabled on velocity signal
+KalmanFilter VelocityKalmanFilter; // applies 3 DoF kalman filtering to remove noise from velocity signal																				   
+bool FlagForceKalmanFilter = true;
+KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
 
-DeadbandDataReduction* DBForce; // data reduction class for force samples
 DeadbandDataReduction* DBVelocity; // data reduction class for velocity samples
 DeadbandDataReduction* DBPosition; // data reduction class for position samples
 
-bool ForceTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
 bool VelocityTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
 bool PositionTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
 
-KalmanFilter VelocityKalmanFilter; // applies 3 DoF kalman filtering to remove noise from velocity signal																				   
-
-int ForcePacketNum = 0;
-int VelocityPacketNum = 0;
-int PositionPacketNum = 0;
-
-//----------TDPA---------------------
-void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3]);
-void initEnergy();
-double sample_interval = 0.001;   //1kHz
-double SlaveControlForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
-double Em_in = 0, Em_out = 0, Es_in = 0, Es_out = 0;
-double Em_in_last = 0, Es_in_last = 0;   // last transmitted master/slave input energy
-double E_trans_m = 0, E_trans_s = 0, E_recv_m = 0, E_recv_s = 0;   // transmitted and received input energy at the master/slave side
-double alpha_m = 0, beta_s = 0;
-bool TDPAon = false;
-double lastMasterForce[3] = { 0.0, 0.0, 0.0 };   // use dot_f and tau to filter the master force
-bool use_tauFilter = true;
 double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
-double UpdatedForceSample[3] = { 0.0,0.0,0.0 };  // updated 3 DoF force sample (holds the signal after deadband)
-double UpdatedVelocitySample[3] = { 0.0,0.0,0.0 }; // update 3 DoF velocity sample (holds the signal after deadband)
-double UpdatedPositionSample[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF position sample (holds the signal after deadband)
-KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
 
-//----------ISS------------------------
-inline void ISSVelocityRevise(double* vel, double d_force, double mu, double factor);
-inline void ISSForceRevise(double * force, double d_force, double tau);
-double mu_max = 10;
-float stiff_factor = 0.5;
-double d_force = 0.0;
-double tau = 0.005;
-bool ISS_enabled = false;
-bool PassDB_enable = 0;
-bool ISS_delay = 0;
-double last_force = 0.0;
-float mu_factor = 1.7;
-double last_vel_slave = 0.0, last_vel_master = 0.0;
-double last_force_master = 0.0, last_force_slave = 0.0;
-double u_init = 0.01;
-double um_max = u_init, um_max_neg = u_init;
-double us_max = u_init, us_max_neg = u_init;
-bool isContact = 0;
+AlgorithmType ATypeChange = AlgorithmType::AT_None;
+
+class TDPA_Algorithm {
+public:
+	double sample_interval = 0.001;   //1kHz
+	double E_in = 0 , E_out = 0;
+	double E_in_last = 0;
+	double E_trans = 0, E_recv = 0;
+	double alpha = 0;
+	bool TDPAon = true;
+	void ComputeEnergy(double vel[3], double force[3])
+	{
+		// only for z direction
+		double power = vel[2] * (-1 * force[2]);
+		if (power >= 0) {
+			E_in = E_in + sample_interval*power;
+		}
+		else {
+			E_out = E_out - sample_interval*power;
+		}
+	};
+	// only used by master
+	void ForceRevise(double* Vel, double* force) {
+		ComputeEnergy(Vel, force);
+
+		if (E_out > E_recv && abs(Vel[2]) > 0.001)
+		{
+			alpha = (E_out - E_recv) / (sample_interval*Vel[2] * Vel[2]);
+			E_out = E_recv;
+		}
+		else
+			alpha = 0;
+
+		// 3. revise force and apply the revised force
+		if (TDPAon)
+			force[2] = force[2] - alpha*Vel[2];
+	};
+	// only used by slavor
+	void VelocityRevise(double* Vel, double* force) {
+		ComputeEnergy(Vel, force);
+		if (E_out > E_recv && abs(force[2]) > 0.001)
+		{
+			alpha = (E_out - E_recv) / (sample_interval*force[2] * force[2]);
+			E_out = E_recv;
+		}
+		else
+			alpha = 0;
+
+		// 3. revise slave vel 
+		if (TDPAon)
+			Vel[2] = Vel[2] - alpha*force[2];
+	};
+
+	void Initialize()
+	{
+		E_in = E_out =0;
+		E_in_last = 0;
+		E_trans = E_recv = 0;
+		alpha = 0;
+	};
+}TDPA;
+
+class ISS_Algorithm {
+public:
+	double mu_max = 10;
+	float stiff_factor = 0.5;
+	double d_force = 0.0;
+	double tau = 0.005;
+	bool ISS_enabled = false;
+	double last_force = 0.0;
+	float mu_factor = 1.7;
+
+	void VelocityRevise(double* vel) {
+		if (ISS_enabled) {
+			vel[2] = vel[2] + d_force / (mu_max*mu_factor);
+		}			
+	};
+
+	void ForceRevise(double* force) {
+		d_force = (force[2] - last_force) / 0.001;  // get derivation of force respect to time 
+		last_force = force[2];
+		force[2] = force[2] + d_force*tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
+	};
+
+	void Initialize()
+	{
+		last_force = 0;
+	};
+}ISS;
+
+
 //------------------------------------------------------------------------------
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
@@ -288,10 +333,9 @@ int main(int argc, char* argv[])
 	std::cout << "[q] - Exit application" << std::endl;
 	std::cout << std::endl << std::endl;
 
-
+	
 
 	// initialized deadband classes for force and velocity
-	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
 	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
 	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 
@@ -379,7 +423,7 @@ int main(int argc, char* argv[])
 	tool->start();
 	
 	//120 is maxStiffness
-	mu_max = 46;
+	ISS.mu_max = 46;
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -631,7 +675,22 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	}
 
 	else if (a_key == GLFW_KEY_I) {
-		ISS_enabled = !ISS_enabled;
+		ISS.ISS_enabled = true;
+		ISS.Initialize();
+		ATypeChange = AlgorithmType::AT_ISS;
+
+		TDPA.TDPAon = false;
+	}
+	else if (a_key == GLFW_KEY_T) {
+		TDPA.TDPAon = true;
+		TDPA.Initialize();
+		ATypeChange = AlgorithmType::AT_TDPA;
+
+		ISS.ISS_enabled = false;
+	}
+	else if (a_key == GLFW_KEY_N) {
+		TDPA.TDPAon = false;
+		ISS.ISS_enabled = false;
 	}
 }
 
@@ -723,20 +782,13 @@ void updateHaptics(void)
 		button2 = tool->getUserSwitch(2);
 		button3 = tool->getUserSwitch(3);
 
-
-
-#pragma region calculate velocity and Ein used to create M2S message
 		for (int i = 0; i < 3; i++) {
 			MasterVelocity[i] = linearVelocity(i);
 			MasterPosition[i] = position(i);
 		}
-#pragma region ISS
-		//----------------------------ISS velocity revising------------------------------------			
-		if (ISS_enabled)
-		{
-			ISSVelocityRevise(MasterVelocity, d_force, mu_max, mu_factor);
-		}
-#pragma endregion
+
+		
+
 		if (FlagVelocityKalmanFilter == 1) {
 			// Apply Kalman filtering to remove the noise on velocity signal
 			VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
@@ -747,42 +799,35 @@ void updateHaptics(void)
 
 		// Apply deadband on position
 		DBPosition->GetCurrentSample(MasterPosition);
-		DBPosition->ApplyZOHDeadband(UpdatedPositionSample, &PositionTransmitFlag);
+		DBPosition->ApplyZOHDeadband(MasterPosition, &PositionTransmitFlag);
 
 		if (PositionTransmitFlag == true) {
-			PositionPacketNum++;
 		}
 
 		// Apply deadband on velocity
 		DBVelocity->GetCurrentSample(MasterVelocity);
-		DBVelocity->ApplyZOHDeadband(UpdatedVelocitySample, &VelocityTransmitFlag);
+		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);
 
+		ISS.VelocityRevise(MasterVelocity);
+		
 		if (VelocityTransmitFlag == true) {
-			VelocityPacketNum++;
-			// for TDPA
-			E_trans_m = Em_in;
-			Em_in_last = Em_in;
+			TDPA.E_trans = TDPA.E_in;
+			TDPA.E_in_last = TDPA.E_in;
 		}
 		else
 		{
-			//for TDPA
-			E_trans_m = Em_in_last;
-			//---passive deadband-----
+			TDPA.E_trans  = TDPA.E_in_last;
 		}
-#pragma endregion
-
-
-
 
 #pragma region create message and send it
 		/////////////////////////////////////////////////////////////////////
-// create message to send
-/////////////////////////////////////////////////////////////////////
+		// create message to send
+		/////////////////////////////////////////////////////////////////////
 
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = UpdatedPositionSample[i];//modified by TDPA 
-			msgM2S.linearVelocity[i] = UpdatedVelocitySample[i];//modified by TDPA 
+			msgM2S.position[i] = MasterVelocity[i];//modified by TDPA 
+			msgM2S.linearVelocity[i] = MasterVelocity[i];//modified by TDPA 
 			msgM2S.angularVelocity[i] = angularVelocity(i);
 			msgM2S.rotation[i] = rotation.getCol0()(i);
 			msgM2S.rotation[i + 3] = rotation.getCol1()(i);
@@ -795,10 +840,12 @@ void updateHaptics(void)
 		msgM2S.button2 = button2;
 		msgM2S.button3 = button3;
 		msgM2S.userSwitches = allSwitches;
-		msgM2S.energy = E_trans_m;//modified by TDPA 
+		msgM2S.energy = TDPA.E_trans;//modified by TDPA 
 		__int64 curtime;
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 		msgM2S.time = curtime;
+		msgM2S.ATypeChange = ATypeChange;
+		ATypeChange = AlgorithmType::AT_None;
 
 
 		/////////////////////////////////////////////////////////////////////
@@ -819,11 +866,9 @@ void updateHaptics(void)
 
 
 		int ret = recv(sServer, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0);
-
-		
-
 		if (ret > 0) {
-			// we receive some char data and transform it to hapticMessageM2S.
+			// we receive some char data and transform it to hapticMessageS2M.
+			// if receive more than one hapticMessageS2M, only save the last one.
 			unprocessedPtr += ret;
 
 			unsigned int hapticMsgL = sizeof(hapticMessageS2M);
@@ -846,54 +891,23 @@ void updateHaptics(void)
 			msgS2M = forceQ.front();
 			forceQ.pop();
 			
-			// send computed force, torque, and gripper force to haptic device	
-
-
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			delay = ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000;
 
-
-#pragma region TDPA
-			/////////////////////////////////////////////////////////////////////
-			// TDPA algorithm related code
-			/////////////////////////////////////////////////////////////////////
-
 			//get force and energy from Slave2Master message
 			memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
-			E_recv_m = msgS2M.energy;
 
-			// 2. compute Emout and damping
-			ComputeEnergy(Em_in, Em_out, MasterVelocity, MasterForce);
-			if (Em_out > E_recv_m && abs(MasterVelocity[2]) > 0.001)
-			{
-				alpha_m = (Em_out - E_recv_m) / (sample_interval*MasterVelocity[2] * MasterVelocity[2]);
-				Em_out = E_recv_m;
-			}
-			else
-				alpha_m = 0;
+			TDPA.E_recv = msgS2M.energy;
+			TDPA.ForceRevise(MasterVelocity, MasterForce);
 
-			// 3. revise force and apply the revised force
-			if (TDPAon)
-				MasterForce[2] = MasterForce[2] - alpha_m*MasterVelocity[2];
-
-			// 3.5 force filter (use dot(f) and tau)
-			if (use_tauFilter)
+			//orce filter (use dot(f) and tau)
+			if (FlagForceKalmanFilter)
 			{
 				ForceKalmanFilter.ApplyKalmanFilter(MasterForce);
 				MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
 			}
-#pragma endregion
 
-#pragma region ISS
-			//----------ISS force revising------------------------------------------
-			if (ISS_enabled)
-			{
-				d_force = (MasterForce[2] - last_force) / 0.001;  // get derivation of force respect to time 
-				last_force = MasterForce[2];
-				ISSForceRevise(MasterForce, d_force, tau);
-			}
-#pragma endregion
-
+			ISS.ForceRevise(MasterForce);
 
 			cVector3d force(MasterForce[0], MasterForce[1], MasterForce[2] - MasterVelocity[2] * 0.15);
 			cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
@@ -946,38 +960,4 @@ void updateGraphics(void)
 	GLenum err;
 	err = glGetError();
 	if (err != GL_NO_ERROR) std::cout << "Error:  %s\n" << gluErrorString(err);
-}
-
-
-//-----------TDPA compute energy--------------
-void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3])
-{
-	// only for z direction
-	double power = vel[2] * (-1 * force[2]);
-	if (power >= 0)	{
-		Ein = Ein + sample_interval*power;
-	}
-	else{
-		Eout = Eout - sample_interval*power;
-	}
-}
-
-void initEnergy()
-{
-	SlaveControlForce[0] = SlaveControlForce[0] = SlaveControlForce[0] = 0.0;
-	Em_in = Em_out = Es_in = Es_out = 0;
-	Em_in_last = Es_in_last = 0;
-	E_trans_m = E_trans_s = E_recv_m = E_recv_s = 0;
-	alpha_m = beta_s = 0;
-}
-
-//-----------------for ISS control---------------------
-inline void ISSVelocityRevise(double* vel, double d_force, double mu, double factor)
-{
-	vel[2] = vel[2] + d_force / (mu*factor);
-}
-
-inline void ISSForceRevise(double * force, double d_force, double tau)
-{
-	force[2] = force[2] + d_force*tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
 }

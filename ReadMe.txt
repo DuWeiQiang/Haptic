@@ -1,10 +1,11 @@
 	state:
-		
+		rebuild the code struct:			
 		the base framework without any algorithm. 
 		successful connect with omnet. 
 		process of send and receive has been merged into updateHaptics Thread
 		TDPA algorithm
 		ISS algorithm
+		1KHz
 	simulation step:
 		(with omnet)
 			1. open omnet, run socket/omnet.ini
@@ -26,5 +27,4 @@
 		fix bug: when using omnet, the frequency of code is lowwer than 1khz.
 		in this version, the code of counter has been delete. I user "tool->applyToDevice();" to timing.
 	future work:
-		rebuild the struct of the code
 		add more algorithm
