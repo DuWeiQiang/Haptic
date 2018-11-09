@@ -1,4 +1,5 @@
 	state:
+		add algorithm switch.pls press N:none algorithm, I:ISS, T:TDPA
 		rebuild the code struct:			
 		the base framework without any algorithm. 
 		successful connect with omnet. 

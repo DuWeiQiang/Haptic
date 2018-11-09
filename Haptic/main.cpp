@@ -85,7 +85,7 @@ public:
 	double E_in_last = 0;
 	double E_trans = 0, E_recv = 0;
 	double alpha = 0;
-	bool TDPAon = true;
+	bool TDPAon = false;
 	void ComputeEnergy(double vel[3], double force[3])
 	{
 		// only for z direction
@@ -845,7 +845,7 @@ void updateHaptics(void)
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 		msgM2S.time = curtime;
 		msgM2S.ATypeChange = ATypeChange;
-		ATypeChange = AlgorithmType::AT_None;
+		ATypeChange = AlgorithmType::AT_KEEP;
 
 
 		/////////////////////////////////////////////////////////////////////

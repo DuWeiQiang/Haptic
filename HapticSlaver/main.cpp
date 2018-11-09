@@ -84,7 +84,7 @@ public:
 	double E_in_last = 0;
 	double E_trans = 0, E_recv = 0;
 	double alpha = 0;
-	bool TDPAon = true;
+	bool TDPAon = false;
 	void ComputeEnergy(double vel[3], double force[3])
 	{
 		// only for z direction
@@ -847,6 +847,8 @@ void updateHaptics(void)
 				break;
 			case AlgorithmType::AT_MMT:
 				TDPA.TDPAon = false;
+				break;
+			case AlgorithmType::AT_KEEP:
 				break;
 			}
 

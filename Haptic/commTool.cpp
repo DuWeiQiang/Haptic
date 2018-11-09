@@ -12,7 +12,7 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
-enum AlgorithmType {AT_None, AT_TDPA, AT_ISS, AT_MMT };
+enum AlgorithmType {AT_None, AT_TDPA, AT_ISS, AT_MMT, AT_KEEP };
 
 struct hapticMessageM2S {
 	__int64 time;
