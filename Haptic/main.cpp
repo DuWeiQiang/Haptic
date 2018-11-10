@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
+#include "CODE.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>

@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
+#include "CODE.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>
@@ -168,7 +169,7 @@ cWorld* world;
 cCamera* camera;
 
 // a light source to illuminate the objects in the world
-cDirectionalLight *light;
+cSpotLight *light;
 
 // a font for rendering text
 cFontPtr font;
@@ -343,6 +344,11 @@ inline int socketClientInit() {
 		printf("non-block error");
 	}
 }
+//---------------------------------------------------------------------------
+// DECLARED MACROS
+//---------------------------------------------------------------------------
+// convert to resource path
+#define RESOURCE_PATH(p)    (char*)((resourceRoot+string(p)).c_str())
 //==============================================================================
 /*
 DEMO:   03-analytics.cpp
@@ -456,50 +462,65 @@ int main(int argc, char* argv[])
 #endif
 
 
-	//--------------------------------------------------------------------------
+	//-----------------------------------------------------------------------
 	// WORLD - CAMERA - LIGHTING
-	//--------------------------------------------------------------------------
+	//-----------------------------------------------------------------------
 
 	// create a new world.
 	world = new cWorld();
 
 	// set the background color of the environment
-	world->m_backgroundColor.setBlack();
+	world->m_backgroundColor.setWhite();
 
 	// create a camera and insert it into the virtual world
 	camera = new cCamera(world);
 	world->addChild(camera);
 
 	// position and orient the camera
-	camera->set(cVector3d(0.9, 0.0, 0.6),    // camera position (eye)
-				cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
-				cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+	camera->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
+		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
+		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
-	// set the near and far clipping planes of the camera
-	// anything in front or behind these clipping planes will not be rendered
+									 // set the near and far clipping planes of the camera
 	camera->setClippingPlanes(0.01, 10.0);
 
 	// set stereo mode
 	camera->setStereoMode(stereoMode);
 
 	// set stereo eye separation and focal length (applies only if stereo is enabled)
-	camera->setStereoEyeSeparation(0.03);
-	camera->setStereoFocalLength(1.8);
+	camera->setStereoEyeSeparation(0.02);
+	camera->setStereoFocalLength(2.0);
 
 	// set vertical mirrored display mode
 	camera->setMirrorVertical(mirroredDisplay);
 
-	// create a directional light source
-	light = new cDirectionalLight(world);
+	// create a light source
+	light = new cSpotLight(world);
 
-	// insert light source inside world
+	// attach light to camera
 	world->addChild(light);
 
 	// enable light source
 	light->setEnabled(true);
 
-	// define direction of light beam
-	light->setDir(-1.0, 0.0, 0.0);
+	// position the light source
+	light->setLocalPos(0.0, 0.0, 2.2);
+
+	// define the direction of the light beam
+	light->setDir(0.0, 0.0, -1.0);
+
+	// set uniform concentration level of light 
+	light->setSpotExponent(0.0);
+
+	// enable this light source to generate shadows
+	light->setShadowMapEnabled(true);
+
+	// set the resolution of the shadow map
+	light->m_shadowMap->setQualityLow();
+	//light->m_shadowMap->setQualityMedium();
+
+	// set light cone half angle
+	light->setCutOffAngleDeg(45);
 
 	////////////////////////////////////////////////////////////////////////////
 	//// retrieve information about the current haptic device
@@ -550,48 +571,50 @@ int main(int argc, char* argv[])
 	// stiffness properties
 	double maxStiffness = 120;// hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;
 
-	/////////////////////////////////////////////////////////////////////////
-	// BASE
-	/////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
+	// GROUND
+	//////////////////////////////////////////////////////////////////////////
 
-	// create a mesh
-	cMesh* base = new cMesh();
+	// create a mesh that represents the ground
+	cMesh* ground = new cMesh();
+	world->addChild(ground);
+	// create a plane
+	double groundSize = 3.0;
+	cCreatePlane(ground, groundSize, groundSize);
 
-	// add object to world
-	world->addChild(base);
+	// position ground in world where the invisible ODE plane is located (ODEGPlane1)
+	ground->setLocalPos(0.0, 0.0, 0.0);
 
-	// build mesh using a cylinder primitive
-	//cCreateCylinder(base,
-	//	0.01,
-	//	0.5,
-	//	36,
-	//	1,
-	//	10,
-	//	true,
-	//	true,
-	//	cVector3d(0.0, 0.0, -0.01),
-	//	cMatrix3d(cDegToRad(0), cDegToRad(0), cDegToRad(0), C_EULER_ORDER_XYZ)
-	//);
+	// define some material properties and apply to mesh
+	cMaterial matGround;
+	matGround.setStiffness(46);
+	matGround.setDynamicFriction(0.2);
+	matGround.setStaticFriction(0.0);
+	matGround.setWhite();
+	//matGround.m_emission.setGrayLevel(0.3);
+	ground->setMaterial(matGround);
 
-	double groundSize = 0.5;
-	int vertices0 = base->newVertex(-groundSize, -groundSize, 0.0);
-	int vertices1 = base->newVertex(groundSize, -groundSize, 0.0);
-	int vertices2 = base->newVertex(groundSize, groundSize, 0.0);
-	int vertices3 = base->newVertex(-groundSize, groundSize, 0.0);
-
-	// compose surface with 2 triangles
-	base->newTriangle(vertices0, vertices1, vertices2);
-	base->newTriangle(vertices0, vertices2, vertices3);
-
+	// setup collision detector
+	ground->createAABBCollisionDetector(toolRadius);
 	// set material properties
-	base->m_material->setGrayGainsboro();
-	base->m_material->setStiffness(46);
+	bool fileload;
+	ground->m_texture = cTexture2d::create();
+	fileload = ground->m_texture->loadFromFile("resources/wood.jpg");
+	if (!fileload)
+	{
+		std::cout << "Error - Texture image failed to load correctly." << std::endl;
+		close();
+		return (-1);
+	}
 
-	// build collision detection tree
-	base->createAABBCollisionDetector(toolRadius);
+	// enable texture mapping
+	ground->setUseTexture(true);
+	ground->m_material->setWhite();
 
-	// use display list to optimize graphic rendering performance
-	base->setUseDisplayList(true);
+	// create normal map from texture data
+	cNormalMapPtr normalMap0 = cNormalMap::create();
+	normalMap0->createMap(ground->m_texture);
+	ground->m_normalMap = normalMap0;
 	//--------------------------------------------------------------------------
 	// WIDGETS
 	//--------------------------------------------------------------------------
