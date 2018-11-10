@@ -20,7 +20,10 @@
 [Bb]uild/
 bld/
 [Bb]in/
+
 [Oo]bj/
+# User-specific files
+
 
 # Visual Studio 2015 cache/options directory
 .vs/
