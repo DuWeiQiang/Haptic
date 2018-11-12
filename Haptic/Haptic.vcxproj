@@ -92,14 +92,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\ODE\external\ODE\include;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\ODE\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\BULLET\external\bullet\src;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\BULLET\src</AdditionalIncludeDirectories>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PreprocessorDefinitions>Win32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\ODE\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-ODE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\BULLET\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-BULLET.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>echo copy required dll file into outdir  &amp;&amp;  copy "$(SolutionDir)dll\win-$(Platform)\*.dll" "$(SolutionDir)bin\win-$(Platform)\" /Y</Command>
@@ -110,14 +110,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\ODE\external\ODE\include;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\ODE\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\BULLET\external\bullet\src;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\BULLET\src</AdditionalIncludeDirectories>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PreprocessorDefinitions>WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\ODE\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-ODE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\BULLET\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-BULLET.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>echo copy required dll file into outdir  &amp;&amp;  copy "$(SolutionDir)dll\win-$(Platform)\*.dll" "$(SolutionDir)bin\win-$(Platform)\" /Y</Command>
@@ -130,7 +130,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\ODE\external\ODE\include;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\ODE\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\BULLET\external\bullet\src;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\BULLET\src</AdditionalIncludeDirectories>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PreprocessorDefinitions>Win32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -138,8 +138,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\ODE\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-ODE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\BULLET\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-BULLET.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>echo copy required dll file into outdir  &amp;&amp;  copy "$(SolutionDir)dll\win-$(Platform)\*.dll" "$(SolutionDir)bin\win-$(Platform)\" /Y</Command>
@@ -152,7 +152,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\ODE\external\ODE\include;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\ODE\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external\chai3d-3.2.0\modules\BULLET\external\bullet\src;../external/chai3d-3.2.0/extras/glfw/include;../external/chai3d-3.2.0/external/glew/include;../external/chai3d-3.2.0/external/Eigen;../external/chai3d-3.2.0/src;../external\chai3d-3.2.0\modules\BULLET\src</AdditionalIncludeDirectories>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PreprocessorDefinitions>WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -160,8 +160,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\ODE\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-ODE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>../external/chai3d-3.2.0/extras/glfw/lib/$(Configuration)/$(Platform);../external/chai3d-3.2.0/lib/$(Configuration)/$(Platform);../external\chai3d-3.2.0\modules\BULLET\lib/$(Configuration)/$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>chai3d.lib;glfw.lib;OpenGL32.lib;glu32.lib;chai3d-BULLET.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>echo copy required dll file into outdir  &amp;&amp;  copy "$(SolutionDir)dll\win-$(Platform)\*.dll" "$(SolutionDir)bin\win-$(Platform)\" /Y</Command>

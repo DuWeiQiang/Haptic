@@ -45,7 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
-#include "CODE.h"
+#include "CBullet.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>
@@ -163,7 +163,7 @@ bool mirroredDisplay = false;
 //------------------------------------------------------------------------------
 
 // a world that contains all objects of the virtual environment
-cWorld* world;
+cBulletWorld* world;
 
 // a camera to render the world in the window display
 cCamera* camera;
@@ -220,6 +220,43 @@ SOCKET sClient;
 SOCKET slisten;
 LARGE_INTEGER cpuFreq;
 double delay;// M2S delay
+
+
+cBulletBox* bulletBox0;
+cBulletBox* bulletBox1;
+
+
+// bullet static walls and ground
+cBulletStaticPlane* bulletInvisibleWall1;
+cBulletStaticPlane* bulletInvisibleWall2;
+cBulletStaticPlane* bulletInvisibleWall3;
+cBulletStaticPlane* bulletInvisibleWall4;
+cBulletStaticPlane* bulletInvisibleWall5;
+
+cHapticDeviceInfo Falcon = {
+	C_HAPTIC_DEVICE_FALCON,
+	"Novint Technologies",
+	"Falcon",
+	8.0,      // [N]
+	0.0,      // [N*m]
+	0.0,      // [N]
+	3000.0,   // [N/m]
+	0.0,      // [N*m/Rad]
+	0.0,      // [N*m/Rad]
+	20.0,     // [N/(m/s)]
+	0.0,      // [N*m/(Rad/s)]
+	0.0,      // [N*m/(Rad/s)]
+	0.04,     // [m]
+	cDegToRad(0.0),
+	true,
+	false,
+	false,
+	true,
+	false,
+	false,
+	true,
+	true
+};
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -467,7 +504,7 @@ int main(int argc, char* argv[])
 	//-----------------------------------------------------------------------
 
 	// create a new world.
-	world = new cWorld();
+	world = new cBulletWorld();
 
 	// set the background color of the environment
 	world->m_backgroundColor.setWhite();
@@ -566,36 +603,109 @@ int main(int argc, char* argv[])
 
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
-	double workspaceScaleFactor = 25;//tool->getWorkspaceScaleFactor();
+	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
 	// hapticDeviceInfo.m_workspaceRadius----->0.04
 	// stiffness properties
-	double maxStiffness = 120;// hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;
+	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	world->setGravity(0.0, 0.0, -9.8);
+
+	//////////////////////////////////////////////////////////////////////////
+	// 3 BULLET BLOCKS
+	//////////////////////////////////////////////////////////////////////////
+	double size = 0.4;
+
+	// create three objects that are added to the world
+	bulletBox0 = new cBulletBox(world, size, size, size);
+	world->addChild(bulletBox0);
+
+	bulletBox1 = new cBulletBox(world, size, size, size);
+	world->addChild(bulletBox1);
+
+	// define some material properties for each cube
+	cMaterial mat0, mat1;
+	mat0.setRedIndian();
+	mat0.setStiffness(0.3 * maxStiffness);
+	mat0.setDynamicFriction(0.6);
+	mat0.setStaticFriction(0.6);
+	bulletBox0->setMaterial(mat0);
+
+	mat1.setBlueRoyal();
+	mat1.setStiffness(0.3 * maxStiffness);
+	mat1.setDynamicFriction(0.6);
+	mat1.setStaticFriction(0.6);
+	bulletBox1->setMaterial(mat1);
+
+	// define some mass properties for each cube
+	bulletBox0->setMass(0.5);
+	bulletBox1->setMass(0.05);
+	
+
+	// estimate their inertia properties
+	bulletBox0->estimateInertia();
+	bulletBox1->estimateInertia();
+	
+
+	// create dynamic models
+	bulletBox0->buildDynamicModel();
+	bulletBox1->buildDynamicModel();
+	
+
+	// create collision detector for haptic interaction
+	bulletBox0->createAABBCollisionDetector(toolRadius);
+	bulletBox1->createAABBCollisionDetector(toolRadius);
+	
+
+	// set friction values
+	bulletBox0->setSurfaceFriction(0.4);
+	bulletBox1->setSurfaceFriction(0.4);
+	
+
+	// set position of each cube
+	bulletBox0->setLocalPos(0.0, -0.6, 0.5);
+	bulletBox1->setLocalPos(0.0, 0.6, 0.5);
+	//////////////////////////////////////////////////////////////////////////
+	// INVISIBLE WALLS
+	//////////////////////////////////////////////////////////////////////////
+
+	// we create 5 static walls to contain the dynamic objects within a limited workspace
+	double planeWidth = 1.0;
+	bulletInvisibleWall1 = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
+	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -planeWidth);
+	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -planeWidth);
+	bulletInvisibleWall4 = new cBulletStaticPlane(world, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
+	bulletInvisibleWall5 = new cBulletStaticPlane(world, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
 
 	//////////////////////////////////////////////////////////////////////////
 	// GROUND
 	//////////////////////////////////////////////////////////////////////////
 
-	// create a mesh that represents the ground
-	cMesh* ground = new cMesh();
+	//////////////////////////////////////////////////////////////////////////
+    // GROUND
+    //////////////////////////////////////////////////////////////////////////
+
+    // create ground plane
+	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), 0);
+
+    // add plane to world as we will want to make it visibe
 	world->addChild(ground);
-	// create a plane
-	double groundSize = 3.0;
-	cCreatePlane(ground, groundSize, groundSize);
 
-	// position ground in world where the invisible ODE plane is located (ODEGPlane1)
-	ground->setLocalPos(0.0, 0.0, 0.0);
+    // create a mesh plane where the static plane is located
+    cCreatePlane(ground, 3.0, 3.0, cVector3d(0,0,0));
 
-	// define some material properties and apply to mesh
-	cMaterial matGround;
-	matGround.setStiffness(46);
+    // define some material properties and apply to mesh
+    cMaterial matGround;
+    matGround.setStiffness(0.5 * maxStiffness);
 	matGround.setDynamicFriction(0.2);
-	matGround.setStaticFriction(0.0);
-	matGround.setWhite();
-	//matGround.m_emission.setGrayLevel(0.3);
+    matGround.setStaticFriction(0.0);
+    matGround.setWhite();
+    matGround.m_emission.setGrayLevel(0.3);
 	ground->setMaterial(matGround);
 
-	// setup collision detector
+    // setup collision detector for haptic interaction
 	ground->createAABBCollisionDetector(toolRadius);
+
+    // set friction values
+	ground->setSurfaceFriction(0.4);
 	// set material properties
 	bool fileload;
 	ground->m_texture = cTexture2d::create();
@@ -787,6 +897,9 @@ void updateHaptics(void)
 	simulationFinished = false;
 	char recData[1000];
 	unsigned int unprocessedPtr = 0;
+	// reset clock
+	cPrecisionClock clock;
+	clock.reset();
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
@@ -819,6 +932,8 @@ void updateHaptics(void)
 			}
 		}
 		if (commandQ.size()) {
+
+			
 			msgM2S = commandQ.front();
 			commandQ.pop();
 
@@ -914,6 +1029,10 @@ void updateHaptics(void)
 
 			// compute interaction forces
 			tool->computeInteractionForces();
+
+			
+
+
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
@@ -954,8 +1073,58 @@ void updateHaptics(void)
 			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
 			freqCounterHaptics.signal(1);
 		}
-		// update frequency counter
 		
+		/////////////////////////////////////////////////////////////////////
+		// SIMULATION TIME    
+		/////////////////////////////////////////////////////////////////////
+
+		// stop the simulation clock
+		clock.stop();
+
+		// read the time increment in seconds
+		double timeInterval = cClamp(clock.getcurrentTimeSeconds(), 0.0001, 0.001);
+
+		// restart the simulation clock
+		clock.reset();
+		clock.start();
+
+		/////////////////////////////////////////////////////////////////////
+		// DYNAMIC SIMULATION
+		/////////////////////////////////////////////////////////////////////
+
+		// for each interaction point of the tool we look for any contact events
+		// with the environment and apply forces accordingly
+		int numInteractionPoints = tool->getNumHapticPoints();
+		for (int i = 0; i<numInteractionPoints; i++)
+		{
+			// get pointer to next interaction point of tool
+			cHapticPoint* interactionPoint = tool->getHapticPoint(i);
+
+			// check all contact points
+			int numContacts = interactionPoint->getNumCollisionEvents();
+			for (int i = 0; i<numContacts; i++)
+			{
+				cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
+
+				// given the mesh object we may be touching, we search for its owner which
+				// could be the mesh itself or a multi-mesh object. Once the owner found, we
+				// look for the parent that will point to the Bullet object itself.
+				cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
+
+				// cast to Bullet object
+				cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
+
+				// if Bullet object, we apply interaction forces
+				if (bulletobject != NULL)
+				{
+					bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
+						collisionEvent->m_globalPos - object->getLocalPos());
+				}
+			}
+		}
+
+		// update simulation
+		world->updateDynamics(timeInterval);
 		
 	}
 

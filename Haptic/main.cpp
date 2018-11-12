@@ -45,7 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
 #include "chai3d.h"
-#include "CODE.h"
+#include "CBullet.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>
@@ -167,7 +167,7 @@ public:
 	};
 }ISS;
 
-
+//
 //------------------------------------------------------------------------------
 // GENERAL SETTINGS
 //------------------------------------------------------------------------------
@@ -274,6 +274,30 @@ int height = 0;
 // swap interval for the display context (vertical synchronization)
 int swapInterval = 1;
 
+cHapticDeviceInfo Falcon = {
+	C_HAPTIC_DEVICE_FALCON,
+	"Novint Technologies",
+	"Falcon",
+	8.0,      // [N]
+	0.0,      // [N*m]
+	0.0,      // [N]
+	3000.0,   // [N/m]
+	0.0,      // [N*m/Rad]
+	0.0,      // [N*m/Rad]
+	20.0,     // [N/(m/s)]
+	0.0,      // [N*m/(Rad/s)]
+	0.0,      // [N*m/(Rad/s)]
+	0.04,     // [m]
+	cDegToRad(0.0),
+	true,
+	false,
+	false,
+	true,
+	false,
+	false,
+	true,
+	true
+};
 
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
@@ -399,7 +423,7 @@ int main(int argc, char* argv[])
 	tool->setHapticDevice(hapticDevice);
 
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(1.0);
+	tool->setWorkspaceRadius(1.3);
 
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
@@ -422,9 +446,16 @@ int main(int argc, char* argv[])
 
 	// start the haptic tool
 	tool->start();
-	
+	// read the scale factor between the physical workspace of the haptic
+	// device and the virtual workspace defined for the tool
+	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
+	// hapticDeviceInfo.m_workspaceRadius----->0.04
+	// stiffness properties
+	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+
 	//120 is maxStiffness
-	ISS.mu_max = 46;
+	ISS.mu_max = maxStiffness * ISS.stiff_factor;
+
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -676,6 +707,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	}
 
 	else if (a_key == GLFW_KEY_I) {
+		std::cout << "ISS enabled" << std::endl;
 		ISS.ISS_enabled = true;
 		ISS.Initialize();
 		ATypeChange = AlgorithmType::AT_ISS;
@@ -683,6 +715,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		TDPA.TDPAon = false;
 	}
 	else if (a_key == GLFW_KEY_T) {
+		std::cout << "TDPA enabled" << std::endl;
 		TDPA.TDPAon = true;
 		TDPA.Initialize();
 		ATypeChange = AlgorithmType::AT_TDPA;
@@ -690,6 +723,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		ISS.ISS_enabled = false;
 	}
 	else if (a_key == GLFW_KEY_N) {
+		std::cout << "None enabled" << std::endl;
 		TDPA.TDPAon = false;
 		ISS.ISS_enabled = false;
 	}
