@@ -3,12 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticMaster", "Haptic\Haptic.vcxproj", "{78894AF6-8137-4445-9AFA-08342CC5E4B8}"
-	ProjectSection(ProjectDependencies) = postProject
-		{A9F01342-5463-4634-B1F9-BF98CD5591B0} = {A9F01342-5463-4634-B1F9-BF98CD5591B0}
-		{71AF75A0-52B6-4C1B-8E56-CB31C6741A18} = {71AF75A0-52B6-4C1B-8E56-CB31C6741A18}
-	EndProjectSection
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticSlaver", "HapticSlaver\HapticSlaver.vcxproj", "{9F84883B-331F-463F-B5E8-725DEB052B72}"
 	ProjectSection(ProjectDependencies) = postProject
 		{89755822-86E3-4209-8C0E-C03B9BF95018} = {89755822-86E3-4209-8C0E-C03B9BF95018}
@@ -22,6 +16,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "glfw", "external\chai3d-3.2
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CHAI3D-BULLET", "external\chai3d-3.2.0\modules\BULLET\CHAI3D-BULLET-VS2015.vcxproj", "{89755822-86E3-4209-8C0E-C03B9BF95018}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticMaster", "HapticMaster\HapticMaster.vcxproj", "{78894AF6-8137-4445-9AFA-08342CC5E4B8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -30,14 +26,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.ActiveCfg = Debug|x64
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.Build.0 = Debug|x64
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.ActiveCfg = Debug|Win32
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.Build.0 = Debug|Win32
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.ActiveCfg = Release|x64
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.Build.0 = Release|x64
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.ActiveCfg = Release|Win32
-		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.Build.0 = Release|Win32
 		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x64.ActiveCfg = Debug|x64
 		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x64.Build.0 = Debug|x64
 		{9F84883B-331F-463F-B5E8-725DEB052B72}.Debug|x86.ActiveCfg = Debug|Win32
@@ -70,6 +58,14 @@ Global
 		{89755822-86E3-4209-8C0E-C03B9BF95018}.Release|x64.Build.0 = Release|x64
 		{89755822-86E3-4209-8C0E-C03B9BF95018}.Release|x86.ActiveCfg = Release|Win32
 		{89755822-86E3-4209-8C0E-C03B9BF95018}.Release|x86.Build.0 = Release|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.ActiveCfg = Debug|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x64.Build.0 = Debug|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.ActiveCfg = Debug|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Debug|x86.Build.0 = Debug|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.ActiveCfg = Release|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x64.Build.0 = Release|x64
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.ActiveCfg = Release|Win32
+		{78894AF6-8137-4445-9AFA-08342CC5E4B8}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

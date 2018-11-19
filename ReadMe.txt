@@ -1,4 +1,6 @@
 	state:
+		restruct the solution: rename haptic proj into hapticmaster
+
 		add ode library. 
 		add ground picture.
 		add github repository.

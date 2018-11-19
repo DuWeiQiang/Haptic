@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{78894AF6-8137-4445-9AFA-08342CC5E4B8}</ProjectGuid>
-    <RootNamespace>Haptic</RootNamespace>
+    <RootNamespace>HapticMaster</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
     <ProjectName>HapticMaster</ProjectName>
   </PropertyGroup>
