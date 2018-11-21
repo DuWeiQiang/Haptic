@@ -1,7 +1,9 @@
 	state:
+		build a new project named HapticMixture. This new project used to solve 1khz compute frequency problem of bullet library
+
 		restruct the solution: rename haptic proj into hapticmaster
 
-		add ode library. 
+		add bullet library.  The reason why we use bullet because it can restrict y and z axis movement which don't provided by ode library.
 		add ground picture.
 		add github repository.
 

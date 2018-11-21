@@ -1099,11 +1099,11 @@ bool cGenericTool::isInContact(cGenericObject* a_object)
 //==============================================================================
 bool cGenericTool::setWorkspaceRadius(const double& a_workspaceRadius)
 {
+	// check if device is available
+    if (m_hapticDevice == nullptr) { return (false); }    
+
 	// update new workspace size
     m_workspaceRadius = a_workspaceRadius;
-
-    // check if device is available
-    if (m_hapticDevice == nullptr) { return (false); }    
 
     // compute the new scale factor between the workspace of the tool
     // and one of the haptic device

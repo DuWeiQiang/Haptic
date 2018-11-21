@@ -737,7 +737,7 @@ void updateHaptics(void)
         clock.stop();
 
         // read the time increment in seconds
-        double timeInterval = cClamp(clock.getCurrentTimeSeconds(), 0.0001, 0.001);
+        double timeInterval = cClamp(clock.getcurrentTimeSeconds(), 0.0001, 0.001);
 
         // restart the simulation clock
         clock.reset();
