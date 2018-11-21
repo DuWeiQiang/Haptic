@@ -521,13 +521,13 @@ int main(int argc, char* argv[])
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
 	//////////////////////////////////////////////////////////////////////////
-	double size = 0.4;
+	double size = 0.1;
 
 	// create three objects that are added to the world
-	bulletBox0 = new cBulletBox(world, size, size, size);
+	bulletBox0 = new cBulletBox(world, 5 * size, size, 5 * size);
 	world->addChild(bulletBox0);
 
-	bulletBox1 = new cBulletBox(world, size, size, size);
+	bulletBox1 = new cBulletBox(world, 5 * size, size, 5 * size);
 	world->addChild(bulletBox1);
 
 	// define some material properties for each cube
@@ -546,7 +546,7 @@ int main(int argc, char* argv[])
 
 	// define some mass properties for each cube
 	bulletBox0->setMass(0.5);
-	bulletBox1->setMass(0.05);
+	bulletBox1->setMass(0.5);
 
 
 	// estimate their inertia properties
@@ -555,7 +555,7 @@ int main(int argc, char* argv[])
 
 
 	// create dynamic models
-	bulletBox0->buildDynamicModel();
+	//bulletBox0->buildDynamicModel();
 	bulletBox1->buildDynamicModel();
 
 
@@ -570,8 +570,12 @@ int main(int argc, char* argv[])
 
 
 	// set position of each cube
-	bulletBox0->setLocalPos(0.0, -0.6, 0.5);
+	bulletBox0->setLocalPos(0.0, -0.0, 0.25);
 	bulletBox1->setLocalPos(0.0, 0.6, 0.5);
+
+	bulletBox0->setGhostEnabled(true);
+	bulletBox1->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+	bulletBox1->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
 	//////////////////////////////////////////////////////////////////////////
 	// INVISIBLE WALLS
 	//////////////////////////////////////////////////////////////////////////
@@ -734,7 +738,7 @@ int main(int argc, char* argv[])
 
 	// call window size callback at initialization
 	windowSizeCallback(window, width, height);
-
+	
 	// main graphic loop
 	while (!glfwWindowShouldClose(window))
 	{
@@ -870,6 +874,16 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		std::cout << "None enabled" << std::endl;
 		Master::TDPA.TDPAon = false;
 		Master::ISS.ISS_enabled = false;
+	}
+	else if (a_key = GLFW_KEY_R) {
+		world->setHapticEnabled(!world->getHapticEnabled());
+		if (!world->getHapticEnabled()) {
+			std::cout << "Postion has been modified; Press R to contunue";
+			cVector3d position = Master::tool->getDeviceLocalPos();
+			Slave::MasterPosition[0] = position.x();
+			Slave::MasterPosition[1] = position.y();
+			Slave::MasterPosition[2] = position.z();
+		}		
 	}
 }
 
@@ -1315,10 +1329,14 @@ void updateHaptics(void)
 	simulationFinished = false;
 
 	Slave::clock.reset();
-	
+	int i = 0;
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
+		cVector3d pos = bulletBox0->getLocalPos();
+		pos.y(1.5*sin(i++*0.001));
+		bulletBox0->setLocalPos(pos);
+
 		MasterUpdate();
 
 		SlaveUpdate();
