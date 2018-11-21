@@ -1,4 +1,6 @@
 	state:
+		modify algorithms into 3D
+
 		build a new project named HapticMixture. This new project used to solve 1khz compute frequency problem of bullet library
 
 		restruct the solution: rename haptic proj into hapticmaster

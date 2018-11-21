@@ -975,12 +975,12 @@ inline void MasterUpdate() {
 	Master::ISS.VelocityRevise(Master::MasterVelocity);
 
 	if (Master::VelocityTransmitFlag == true) {
-		Master::TDPA.E_trans = Master::TDPA.E_in;
-		Master::TDPA.E_in_last = Master::TDPA.E_in;
+		memcpy(Master::TDPA.E_trans, Master::TDPA.E_in, 3*sizeof(double));
+		memcpy(Master::TDPA.E_in_last, Master::TDPA.E_in, 3 * sizeof(double));
 	}
 	else
 	{
-		Master::TDPA.E_trans = Master::TDPA.E_in_last;
+		memcpy(Master::TDPA.E_trans, Master::TDPA.E_in_last, 3 * sizeof(double));
 	}
 
 #pragma region create message and send it
@@ -1004,7 +1004,7 @@ inline void MasterUpdate() {
 	msgM2S.button2 = button2;
 	msgM2S.button3 = button3;
 	msgM2S.userSwitches = allSwitches;
-	msgM2S.energy = Master::TDPA.E_trans;//modified by TDPA 
+	memcpy(msgM2S.energy, Master::TDPA.E_trans, 3 * sizeof(double));//modified by TDPA 
 	__int64 curtime;
 	QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 	msgM2S.time = curtime;
@@ -1060,7 +1060,7 @@ inline void MasterUpdate() {
 		//get force and energy from Slave2Master message
 		memcpy(Master::MasterForce, msgS2M.force, 3 * sizeof(double));
 
-		Master::TDPA.E_recv = msgS2M.energy;
+		memcpy(Master::TDPA.E_recv, msgS2M.energy, 3 * sizeof(double));
 		Master::TDPA.ForceRevise(Master::MasterVelocity, Master::MasterForce);
 
 		//orce filter (use dot(f) and tau)
@@ -1176,7 +1176,7 @@ inline void SlaveUpdate() {
 
 
 		memcpy(Slave::MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
-		Slave::TDPA.E_recv = msgM2S.energy;
+		memcpy(Slave::TDPA.E_recv, msgM2S.energy, 3 * sizeof(double));
 		Slave::TDPA.VelocityRevise(Slave::MasterVelocity, Slave::SlaveForce);
 
 		if (Slave::ControlMode == 1) { // if velocity control mode is selected
@@ -1233,12 +1233,12 @@ inline void SlaveUpdate() {
 		Slave::DBForce->ApplyZOHDeadband(Slave::MasterForce, &Slave::ForceTransmitFlag); // apply DB data reduction
 
 		if (Slave::ForceTransmitFlag == true) {
-			Slave::TDPA.E_trans = Slave::TDPA.E_in;
-			Slave::TDPA.E_in_last = Slave::TDPA.E_in;
+			memcpy(Slave::TDPA.E_trans, Slave::TDPA.E_in, 3 * sizeof(double));
+			memcpy(Slave::TDPA.E_in_last, Slave::TDPA.E_in, 3 * sizeof(double));
 		}
 		else
 		{
-			Slave::TDPA.E_trans = Slave::TDPA.E_in_last;
+			memcpy(Slave::TDPA.E_trans, Slave::TDPA.E_in_last, 3 * sizeof(double));
 		}
 
 		/////////////////////////////////////////////////////////////////////
@@ -1250,7 +1250,7 @@ inline void SlaveUpdate() {
 			msgS2M.torque[i] = torque(i);
 		}
 		msgS2M.gripperForce = gripperForce;
-		msgS2M.energy = Slave::TDPA.E_trans;
+		memcpy(msgS2M.energy, Slave::TDPA.E_trans, 3 * sizeof(double));
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 		msgS2M.time = curtime;
 		send(Slave::sServer, (char *)&msgS2M, sizeof(hapticMessageS2M), 0);
