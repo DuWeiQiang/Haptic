@@ -900,9 +900,15 @@ void updateHaptics(void)
 	// reset clock
 	cPrecisionClock clock;
 	clock.reset();
+	__int64 lastCounter = 0;
+	QueryPerformanceCounter((LARGE_INTEGER *)&lastCounter);
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
+		__int64 currentCounter;
+		QueryPerformanceCounter((LARGE_INTEGER *)&currentCounter);
+		if (currentCounter - lastCounter < 3609)continue;
+		lastCounter = currentCounter;
 		// compute global reference frames for each object
 		world->computeGlobalPositions(true);
 		/////////////////////////////////////////////////////////////////////
