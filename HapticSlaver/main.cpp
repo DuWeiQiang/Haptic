@@ -67,11 +67,6 @@ bool ForceTransmitFlag = false; // true: deadband triger false: keep last recent
 // TDPA variable and function realted code
 //------------------------------------------------------------------------------
 //----------TDPA---------------------
-
-void ComputeEnergy(double &Ein, double &Eout, double vel[3], double force[3]);
-void initEnergy();
-double sample_interval = 0.001;   //1kHz
-
 double SlaveForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
 
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
@@ -81,60 +76,69 @@ double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 class TDPA_Algorithm {
 public:
 	double sample_interval = 0.001;   //1kHz
-	double E_in = 0, E_out = 0;
-	double E_in_last = 0;
-	double E_trans = 0, E_recv = 0;
-	double alpha = 0;
+	double E_in[3] = { 0,0,0 }, E_out[3] = { 0,0,0 };
+	double E_in_last[3] = { 0,0,0 };
+	double E_trans[3] = { 0,0,0 }, E_recv[3] = { 0,0,0 };
+	double alpha[3] = { 0,0,0 }, beta[3] = { 0,0,0 };
 	bool TDPAon = false;
 	void ComputeEnergy(double vel[3], double force[3])
 	{
-		// only for z direction
-		double power = vel[2] * (-1 * force[2]);
-		if (power >= 0) {
-			E_in = E_in + sample_interval*power;
+		for (int i = 0; i < 3; i++) {
+			// only for z direction
+			double power = vel[i] * (-1 * force[i]);
+			if (power >= 0) {
+				E_in[i] = E_in[i] + sample_interval*power;
+			}
+			else {
+				E_out[i] = E_out[i] - sample_interval*power;
+			}
 		}
-		else {
-			E_out = E_out - sample_interval*power;
-		}
+
 	};
 	// only used by master
 	void ForceRevise(double* Vel, double* force) {
 		ComputeEnergy(Vel, force);
+		for (int i = 0; i < 3; i++) {
+			if (E_out[i] > E_recv[i] && abs(Vel[i]) > 0.001)
+			{
+				alpha[i] = (E_out[i] - E_recv[i]) / (sample_interval*Vel[i] * Vel[i]);
+				E_out[i] = E_recv[i];
+			}
+			else
+				alpha[i] = 0;
 
-		if (E_out > E_recv && abs(Vel[2]) > 0.001)
-		{
-			alpha = (E_out - E_recv) / (sample_interval*Vel[2] * Vel[2]);
-			E_out = E_recv;
+			// 3. revise force and apply the revised force
+			if (TDPAon)
+				force[i] = force[i] - alpha[i] * Vel[i];
 		}
-		else
-			alpha = 0;
-
-		// 3. revise force and apply the revised force
-		if (TDPAon)
-			force[2] = force[2] - alpha*Vel[2];
 	};
 	// only used by slavor
 	void VelocityRevise(double* Vel, double* force) {
 		ComputeEnergy(Vel, force);
-		if (E_out > E_recv && abs(force[2]) > 0.001)
-		{
-			alpha = (E_out - E_recv) / (sample_interval*force[2] * force[2]);
-			E_out = E_recv;
-		}
-		else
-			alpha = 0;
+		for (int i = 0; i < 3; i++) {
+			if (E_out[i] > E_recv[i] && abs(force[i]) > 0.001)
+			{
+				beta[i] = (E_out[i] - E_recv[i]) / (sample_interval*force[i] * force[i]);
+				E_out[i] = E_recv[i];
+			}
+			else
+				beta[i] = 0;
 
-		// 3. revise slave vel 
-		if (TDPAon)
-			Vel[2] = Vel[2] - alpha*force[2];
+			// 3. revise slave vel 
+			if (TDPAon)
+				Vel[i] = Vel[i] - beta[i] * force[i];
+		}
 	};
 
 	void Initialize()
 	{
-		E_in = E_out = 0;
-		E_in_last = 0;
-		E_trans = E_recv = 0;
-		alpha = 0;
+		memset(E_in, 0, 3 * sizeof(double));
+		memset(E_out, 0, 3 * sizeof(double));
+		memset(E_in_last, 0, 3 * sizeof(double));
+		memset(E_trans, 0, 3 * sizeof(double));
+		memset(E_recv, 0, 3 * sizeof(double));
+		memset(alpha, 0, 3 * sizeof(double));
+		memset(beta, 0, 3 * sizeof(double));
 	};
 }TDPA;
 
@@ -999,7 +1003,7 @@ void updateHaptics(void)
 
 						
 			memcpy(MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
-			TDPA.E_recv = msgM2S.energy;
+			memcpy(TDPA.E_recv, msgM2S.energy, 3*sizeof(double));
 			TDPA.VelocityRevise(MasterVelocity, SlaveForce);
 
 			if (ControlMode == 1) { // if velocity control mode is selected
@@ -1056,12 +1060,12 @@ void updateHaptics(void)
 			DBForce->ApplyZOHDeadband(MasterForce, &ForceTransmitFlag); // apply DB data reduction
 
 			if (ForceTransmitFlag == true) {
-				TDPA.E_trans = TDPA.E_in;
-				TDPA.E_in_last = TDPA.E_in;
+				memcpy(TDPA.E_trans, TDPA.E_in, 3 * sizeof(double));
+				memcpy(TDPA.E_in_last, TDPA.E_in, 3 * sizeof(double));
 			}
 			else
 			{
-				TDPA.E_trans = TDPA.E_in_last;
+				memcpy(TDPA.E_trans, TDPA.E_in_last, 3 * sizeof(double));
 			}
 
 			/////////////////////////////////////////////////////////////////////
@@ -1073,7 +1077,7 @@ void updateHaptics(void)
 				msgS2M.torque[i] = torque(i);
 			}
 			msgS2M.gripperForce = gripperForce;
-			msgS2M.energy = TDPA.E_trans;
+			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			msgS2M.time = curtime;
 			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 

@@ -42,7 +42,7 @@ struct hapticMessageM2S {
 
 	double userSwitches;
 
-	double energy;
+	double energy[3];
 	
 	// user-switch status (button 0)
 	int button0, button1, button2, button3;
@@ -56,7 +56,7 @@ struct hapticMessageS2M {
 	double force[3];
 	double torque[3];
 	double gripperForce;
-	double energy;
+	double energy[3];
 };
 
 template<typename T>
