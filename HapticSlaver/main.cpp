@@ -73,6 +73,60 @@ double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sa
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
+class WAVE_ALGORITHM {
+public:
+	double b = 3;	//damping factor
+	bool waveOn = false;
+	// WAVE algorithm variables
+	struct WaveV
+	{
+		
+		cVector3d ul;	//sent signal OP
+		cVector3d vl;	//received signal OP
+		cVector3d ur;	//sent signal TOP
+		cVector3d vr;	//received signal OP
+		cVector3d F;	//force at OP
+	}WV;
+
+	void VelocityRevise(double* vel,WaveV* wave, double* force) {
+		if(waveOn) {
+			cVector3d temp = getVel_r(b, wave, cVector3d(force[0],force[1],force[2]));
+			vel[0] = temp.x();
+			vel[0] = temp.y();
+			vel[0] = temp.z();
+		}		
+	}
+
+	void ForceRevise(double* vel, WaveV* wave, double* force) {
+		if (waveOn) {
+			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]));
+			force[0] = temp.x();
+			force[0] = temp.y();
+			force[0] = temp.z();
+		}
+	}
+
+	void getWave_l(double b, WaveV* wave, cVector3d vel)
+	{
+		wave->ul = sqrt(2 * b)*vel + wave->vl;
+	}
+
+	void getWave_r(double b, WaveV* wave, cVector3d f)
+	{
+		wave->ur = (sqrt(2 / b)*f - wave->vr);
+	}
+
+	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
+	{
+		return 1 / b*(f - sqrt(2 * b)*wave->vr);
+	}
+
+	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
+	{
+		return 1 * b*vel + sqrt(2 * b)*wave->vl;
+	}
+}WAVE;
+
 class TDPA_Algorithm {
 public:
 	double sample_interval = 0.001;   //1kHz
@@ -981,6 +1035,13 @@ void updateHaptics(void)
 			button1 = msgM2S.button1;
 			button2 = msgM2S.button2;
 			button3 = msgM2S.button3;
+			
+			memcpy(MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
+			memcpy(TDPA.E_recv, msgM2S.energy, 3*sizeof(double));
+
+			double vr[3];
+			memcpy(vr, msgM2S.waveVariable, 3 * sizeof(double));
+			WAVE.WV.vr = cVector3d(vr[0], vr[1], vr[2]);
 
 			switch (msgM2S.ATypeChange) {
 			case AlgorithmType::AT_None:
@@ -999,12 +1060,12 @@ void updateHaptics(void)
 			case AlgorithmType::AT_KEEP:
 				break;
 			}
+							
+			
 
 
-						
-			memcpy(MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
-			memcpy(TDPA.E_recv, msgM2S.energy, 3*sizeof(double));
 			TDPA.VelocityRevise(MasterVelocity, SlaveForce);
+			WAVE.VelocityRevise(MasterVelocity, &WAVE.WV, MasterForce);
 
 			if (ControlMode == 1) { // if velocity control mode is selected
 									// Compute tool position using delayed velocity signal
@@ -1046,19 +1107,22 @@ void updateHaptics(void)
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
+			WAVE.getWave_r(WAVE.b, &WAVE.WV, cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]));
+			
+			double ur[3] = { WAVE.WV.ur.x(), WAVE.WV.ur.y(), WAVE.WV.ur.z() };
 
 			MasterForce[0] = force.x();
 			MasterForce[1] = force.y();
 			MasterForce[2] = force.z();
-
-			SlaveForce[0] = -1 * force.x();
-			SlaveForce[1] = -1 * force.y();
-			SlaveForce[2] = -1 * force.z();
-
+			
 			// Slave side: Perceptual deadband data reduction is applied
 			DBForce->GetCurrentSample(MasterForce); // pass the current sample for DB data reduction
 			DBForce->ApplyZOHDeadband(MasterForce, &ForceTransmitFlag); // apply DB data reduction
 
+			SlaveForce[0] = -1 * MasterForce[0];
+			SlaveForce[1] = -1 * MasterForce[1];
+			SlaveForce[2] = -1 * MasterForce[2];
+			
 			if (ForceTransmitFlag == true) {
 				memcpy(TDPA.E_trans, TDPA.E_in, 3 * sizeof(double));
 				memcpy(TDPA.E_in_last, TDPA.E_in, 3 * sizeof(double));
@@ -1078,6 +1142,7 @@ void updateHaptics(void)
 			}
 			msgS2M.gripperForce = gripperForce;
 			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
+			memcpy(msgS2M.waveVariable, ur, 3 * sizeof(double));
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			msgS2M.time = curtime;
 			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
