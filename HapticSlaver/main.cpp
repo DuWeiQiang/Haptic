@@ -963,10 +963,7 @@ void updateHaptics(void)
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
-		__int64 currentCounter;
-		QueryPerformanceCounter((LARGE_INTEGER *)&currentCounter);
-		if (currentCounter - lastCounter < 3609)continue;
-		lastCounter = currentCounter;
+
 		// compute global reference frames for each object
 		world->computeGlobalPositions(true);
 		/////////////////////////////////////////////////////////////////////
@@ -1148,7 +1145,10 @@ void updateHaptics(void)
 			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
 			freqCounterHaptics.signal(1);
 		}
-		
+		__int64 currentCounter;
+		QueryPerformanceCounter((LARGE_INTEGER *)&currentCounter);
+		if (currentCounter - lastCounter < 3609)continue;
+		lastCounter = currentCounter;
 		/////////////////////////////////////////////////////////////////////
 		// SIMULATION TIME    
 		/////////////////////////////////////////////////////////////////////

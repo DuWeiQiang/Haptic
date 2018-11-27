@@ -223,12 +223,13 @@ public:
 	};
 
 	void ForceRevise(double* force) {
-		for (int i = 0; i < 3; i++) {
-			d_force[i] = (force[i] - last_force[i]) / 0.001;  // get derivation of force respect to time 
-			last_force[i] = force[i];
-			force[i] = force[i] + d_force[i] * tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
+		if (ISS_enabled) {
+			for (int i = 0; i < 3; i++) {
+				d_force[i] = (force[i] - last_force[i]) / 0.001;  // get derivation of force respect to time 
+				last_force[i] = force[i];
+				force[i] = force[i] + d_force[i] * tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
+			}
 		}
-
 	};
 
 	void Initialize()
@@ -934,7 +935,7 @@ void updateHaptics(void)
 
 		hapticMessageM2S msgM2S;
 		for (int i = 0; i < 3; i++) {
-			msgM2S.position[i] = MasterVelocity[i];//modified by TDPA 
+			msgM2S.position[i] = MasterPosition[i];//modified by TDPA 
 			msgM2S.linearVelocity[i] = MasterVelocity[i];//modified by TDPA 
 			msgM2S.angularVelocity[i] = angularVelocity(i);
 			msgM2S.rotation[i] = rotation.getCol0()(i);

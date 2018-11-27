@@ -1,4 +1,7 @@
 	state:
+		fix some small bugs: 1. 1khz problem : 1ms counter related code(main.c in salve 1148-1151) cause the process frequency lower than 1KHz, move these codes to line 1148.
+		bugs in main.c in slave 938 and 226 have been fixed.
+
 		modify algorithms into 3D
 
 		build a new project named HapticMixture. This new project used to solve 1khz compute frequency problem of bullet library
