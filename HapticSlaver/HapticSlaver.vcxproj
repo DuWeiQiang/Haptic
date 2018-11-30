@@ -22,6 +22,7 @@
     <ProjectGuid>{9F84883B-331F-463F-B5E8-725DEB052B72}</ProjectGuid>
     <RootNamespace>HapticSlaver</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <ProjectName>HapticSlave</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

@@ -79,6 +79,61 @@ double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sa
 
 AlgorithmType ATypeChange = AlgorithmType::AT_None;
 
+class MMT_ALGORITHM {
+public:
+	/*
+	enviroment variable:
+	1. box position;
+	3. K used to calculate the force
+	*/
+	static struct envPar
+	{
+		cVector3d parPosition;
+		cVector3d parStiffness;
+		bool Flag;//whether this parameters is used to update the master's enviroment
+	};
+	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+	int length = 100;
+	int index = 0;
+	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
+
+	void ForceRevise(cVector3d &force, cVector3d goalPos, cVector3d proxyPos) {
+		force = MasterPar.parStiffness;
+		force.mulElement(proxyPos - goalPos);
+	}
+
+	cVector3d Average(cVector3d temp) {
+		if (index < 100) {
+			parStiffness[index] = temp;
+		}
+		else {
+			parStiffness[index % 100] = temp;
+			index = index % 100;
+		}
+		cVector3d avg;
+		for (int i = 0; i < 100; i++) {
+			avg += parStiffness[i];
+		}
+		avg /= 100;
+		return avg;
+	}
+
+	bool isTransmit() {
+		for (int i = 0; i < 3; i++) {
+			if (abs(MasterPar.parStiffness(i) - SlavePar.parStiffness(i)) > db)
+				return true;
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > db)
+				return true;
+		}
+		return false;
+	}
+
+	/*
+	dead band parameter
+	*/
+	double db;
+}MMT;
 
 class WAVE_ALGORITHM {
 public:
@@ -310,10 +365,13 @@ void close(void);
 //------------------------------------------------------------------------------
 
 // a world that contains all objects of the virtual environment
-cWorld* world;
+cBulletWorld* world;
 
 // a camera to render the world in the window display
 cCamera* camera;
+
+// a light source to illuminate the objects in the world
+cSpotLight *light;
 
 // a font for rendering text
 cFontPtr font;
@@ -344,6 +402,18 @@ int height = 0;
 
 // swap interval for the display context (vertical synchronization)
 int swapInterval = 1;
+
+
+cBulletBox* bulletBox0;
+cBulletBox* bulletBox1;
+
+
+// bullet static walls and ground
+cBulletStaticPlane* bulletInvisibleWall1;
+cBulletStaticPlane* bulletInvisibleWall2;
+cBulletStaticPlane* bulletInvisibleWall3;
+cBulletStaticPlane* bulletInvisibleWall4;
+cBulletStaticPlane* bulletInvisibleWall5;
 
 cHapticDeviceInfo Falcon = {
 	C_HAPTIC_DEVICE_FALCON,
@@ -477,66 +547,7 @@ int main(int argc, char* argv[])
 	if (ioctlsocket(sServer, FIONBIO, &on_windows) == SOCKET_ERROR) {
 		printf("non-block error");
 	}
-	//--------------------------------------------------------------------------
-	// HAPTIC DEVICE
-	//--------------------------------------------------------------------------
-
-	// create a haptic device handler
-	handler = new cHapticDeviceHandler();
-
-	// get a handle to the first haptic device
-	handler->getDevice(hapticDevice, 0);
-
-	// create a tool (cursor) and insert into the world
-	tool = new cToolCursor(nullptr);
-
-	// connect the haptic device to the tool
-	tool->setHapticDevice(hapticDevice);
-
-	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(1.3);
-
-	// define the radius of the tool (sphere)
-	double toolRadius = 0.05;
-
-	// define a radius for the tool
-	tool->setRadius(toolRadius);
-
-	// hide the device sphere. only show proxy.
-	tool->setShowContactPoints(true, true);
-
-	// enable if objects in the scene are going to rotate of translate
-	// or possibly collide against the tool. If the environment
-	// is entirely static, you can set this parameter to "false"
-	tool->enableDynamicObjects(true);
-
-	// haptic forces are enabled only if small forces are first sent to the device;
-	// this mode avoids the force spike that occurs when the application starts when 
-	// the tool is located inside an object for instance. 
-	tool->setWaitForSmallForce(true);
-
-	// start the haptic tool
-	tool->start();
-	// read the scale factor between the physical workspace of the haptic
-	// device and the virtual workspace defined for the tool
-	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
-	// hapticDeviceInfo.m_workspaceRadius----->0.04
-	// stiffness properties
-	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-
-	//120 is maxStiffness
-	ISS.mu_max = maxStiffness * ISS.stiff_factor;
-
-	//--------------------------------------------------------------------------
-	// START SIMULATION
-	//--------------------------------------------------------------------------
-
-	// create a thread which starts the main haptics rendering loop
-	hapticsThread = new cThread();
-	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
-
-	// setup callback when application exits
-	atexit(close);
+	
 
 	//--------------------------------------------------------------------------
 	// OPENGL - WINDOW DISPLAY
@@ -618,19 +629,19 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 
 	// create a new world.
-	world = new cWorld();
+	world = new cBulletWorld();
 
 	// set the background color of the environment
-	world->m_backgroundColor.setBlack();
+	world->m_backgroundColor.setWhite();
 
 	// create a camera and insert it into the virtual world
 	camera = new cCamera(world);
 	world->addChild(camera);
 
 	// position and orient the camera
-	camera->set(cVector3d(0.5, 0.0, 0.0),    // camera position (eye)
-		cVector3d(0.0, 0.0, 0.0),    // look at position (target)
-		cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+	camera->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
+		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
+		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
 									 // set the near and far clipping planes of the camera
 	camera->setClippingPlanes(0.01, 10.0);
@@ -639,12 +650,40 @@ int main(int argc, char* argv[])
 	camera->setStereoMode(stereoMode);
 
 	// set stereo eye separation and focal length (applies only if stereo is enabled)
-	camera->setStereoEyeSeparation(0.01);
-	camera->setStereoFocalLength(0.5);
+	camera->setStereoEyeSeparation(0.02);
+	camera->setStereoFocalLength(2.0);
 
 	// set vertical mirrored display mode
 	camera->setMirrorVertical(mirroredDisplay);
 
+
+	// create a light source
+	light = new cSpotLight(world);
+
+	// attach light to camera
+	world->addChild(light);
+
+	// enable light source
+	light->setEnabled(true);
+
+	// position the light source
+	light->setLocalPos(0.0, 0.0, 2.2);
+
+	// define the direction of the light beam
+	light->setDir(0.0, 0.0, -1.0);
+
+	// set uniform concentration level of light 
+	light->setSpotExponent(0.0);
+
+	// enable this light source to generate shadows
+	light->setShadowMapEnabled(true);
+
+	// set the resolution of the shadow map
+	light->m_shadowMap->setQualityLow();
+	//light->m_shadowMap->setQualityMedium();
+
+	// set light cone half angle
+	light->setCutOffAngleDeg(45);
 	//--------------------------------------------------------------------------
 	// WIDGETS
 	//--------------------------------------------------------------------------
@@ -655,6 +694,189 @@ int main(int argc, char* argv[])
 	// create a label to display the haptic and graphic rate of the simulation
 	labelRates = new cLabel(font);
 	camera->m_frontLayer->addChild(labelRates);
+
+
+	//--------------------------------------------------------------------------
+	// HAPTIC DEVICE
+	//--------------------------------------------------------------------------
+
+	// create a haptic device handler
+	handler = new cHapticDeviceHandler();
+
+	// get a handle to the first haptic device
+	handler->getDevice(hapticDevice, 0);
+
+	// create a tool (cursor) and insert into the world
+	tool = new cToolCursor(world);
+	world->addChild(tool);
+	// connect the haptic device to the tool
+	tool->setHapticDevice(hapticDevice);
+	
+	// map the physical workspace of the haptic device to a larger virtual workspace.
+	tool->setWorkspaceRadius(1.3);
+
+	// define the radius of the tool (sphere)
+	double toolRadius = 0.05;
+
+	// define a radius for the tool
+	tool->setRadius(toolRadius);
+
+	// hide the device sphere. only show proxy.
+	tool->setShowContactPoints(true, true);
+
+	// enable if objects in the scene are going to rotate of translate
+	// or possibly collide against the tool. If the environment
+	// is entirely static, you can set this parameter to "false"
+	tool->enableDynamicObjects(true);
+
+	// haptic forces are enabled only if small forces are first sent to the device;
+	// this mode avoids the force spike that occurs when the application starts when 
+	// the tool is located inside an object for instance. 
+	tool->setWaitForSmallForce(true);
+
+	// start the haptic tool
+	tool->start();
+	// read the scale factor between the physical workspace of the haptic
+	// device and the virtual workspace defined for the tool
+	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
+	// hapticDeviceInfo.m_workspaceRadius----->0.04
+	// stiffness properties
+	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	world->setGravity(0.0, 0.0, -9.8);
+	//120 is maxStiffness
+	ISS.mu_max = maxStiffness * ISS.stiff_factor;
+
+	//--------------------------------------------------------------------------
+	// START SIMULATION
+	//--------------------------------------------------------------------------
+
+	// create a thread which starts the main haptics rendering loop
+	hapticsThread = new cThread();
+	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
+
+	// setup callback when application exits
+	atexit(close);
+
+	//////////////////////////////////////////////////////////////////////////
+	// 3 BULLET BLOCKS
+	//////////////////////////////////////////////////////////////////////////
+	double size = 0.4;
+
+	// create three objects that are added to the world
+	bulletBox0 = new cBulletBox(world, size, size, size);
+	world->addChild(bulletBox0);
+
+	bulletBox1 = new cBulletBox(world, size, size, size);
+	world->addChild(bulletBox1);
+
+	// define some material properties for each cube
+	cMaterial mat0, mat1;
+	mat0.setRedIndian();
+	mat0.setStiffness(0.3 * maxStiffness);
+	mat0.setDynamicFriction(0.6);
+	mat0.setStaticFriction(0.6);
+	bulletBox0->setMaterial(mat0);
+
+	mat1.setBlueRoyal();
+	mat1.setStiffness(0.3 * maxStiffness);
+	mat1.setDynamicFriction(0.6);
+	mat1.setStaticFriction(0.6);
+	bulletBox1->setMaterial(mat1);
+
+	// define some mass properties for each cube
+	bulletBox0->setMass(0.5);
+	bulletBox1->setMass(0.05);
+
+
+	// estimate their inertia properties
+	bulletBox0->estimateInertia();
+	bulletBox1->estimateInertia();
+
+
+	// create dynamic models
+	bulletBox0->buildDynamicModel();
+	bulletBox1->buildDynamicModel();
+
+
+	// create collision detector for haptic interaction
+	bulletBox0->createAABBCollisionDetector(toolRadius);
+	bulletBox1->createAABBCollisionDetector(toolRadius);
+
+
+	// set friction values
+	bulletBox0->setSurfaceFriction(0.4);
+	bulletBox1->setSurfaceFriction(0.4);
+
+
+	// set position of each cube
+	bulletBox0->setLocalPos(0.0, -0.6, 0.5);
+	bulletBox1->setLocalPos(0.0, 0.6, 0.5);
+
+	bulletBox0->setGhostEnabled(true);
+	bulletBox1->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+	bulletBox1->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
+	//////////////////////////////////////////////////////////////////////////
+	// INVISIBLE WALLS
+	//////////////////////////////////////////////////////////////////////////
+
+	// we create 5 static walls to contain the dynamic objects within a limited workspace
+	double planeWidth = 1.0;
+	bulletInvisibleWall1 = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
+	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -planeWidth);
+	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -planeWidth);
+	bulletInvisibleWall4 = new cBulletStaticPlane(world, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
+	bulletInvisibleWall5 = new cBulletStaticPlane(world, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
+
+	//////////////////////////////////////////////////////////////////////////
+	// GROUND
+	//////////////////////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////////////////////
+	// GROUND
+	//////////////////////////////////////////////////////////////////////////
+
+	// create ground plane
+	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), 0);
+
+	// add plane to world as we will want to make it visibe
+	world->addChild(ground);
+
+	// create a mesh plane where the static plane is located
+	cCreatePlane(ground, 3.0, 3.0, cVector3d(0, 0, 0));
+
+	// define some material properties and apply to mesh
+	cMaterial matGround;
+	matGround.setStiffness(0.5 * maxStiffness);
+	matGround.setDynamicFriction(0.2);
+	matGround.setStaticFriction(0.0);
+	matGround.setWhite();
+	matGround.m_emission.setGrayLevel(0.3);
+	ground->setMaterial(matGround); 
+
+	// setup collision detector for haptic interaction
+	ground->createAABBCollisionDetector(toolRadius);
+
+	// set friction values
+	ground->setSurfaceFriction(0.4);
+	// set material properties
+	bool fileload;
+	ground->m_texture = cTexture2d::create();
+	fileload = ground->m_texture->loadFromFile("resources/wood.jpg");
+	if (!fileload)
+	{
+		std::cout << "Error - Texture image failed to load correctly." << std::endl;
+		close();
+		return (-1);
+	}
+
+	// enable texture mapping
+	ground->setUseTexture(true);
+	ground->m_material->setWhite();
+
+	// create normal map from texture data
+	cNormalMapPtr normalMap0 = cNormalMap::create();
+	normalMap0->createMap(ground->m_texture);
+	ground->m_normalMap = normalMap0;
 	//--------------------------------------------------------------------------
 	// MAIN GRAPHIC LOOP
 	//--------------------------------------------------------------------------
@@ -836,12 +1058,21 @@ void updateHaptics(void)
 	char recData[1000];
 	unsigned int unprocessedPtr = 0;
 	
+	cPrecisionClock clock;
+	clock.reset();
+
 	// main haptic simulation loop
 	__int64 beginTime;
 	QueryPerformanceCounter((LARGE_INTEGER *)&beginTime);
 
+	cVector3d force = cVector3d(0, 0, 0);
+	cVector3d torque = cVector3d(0, 0, 0);
+	double gripperForce = 0;
+
 	while (simulationRunning)
 	{
+		// compute global reference frames for each object
+		world->computeGlobalPositions(true);
 		/////////////////////////////////////////////////////////////////////
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
@@ -1008,6 +1239,11 @@ void updateHaptics(void)
 			//get force and energy from Slave2Master message
 			memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
 			memcpy(TDPA.E_recv, msgS2M.energy, 3 * sizeof(double));
+			MMT.SlavePar.parPosition = cVector3d(msgS2M.MMTParameters[0], msgS2M.MMTParameters[1], msgS2M.MMTParameters[2]);
+			MMT.SlavePar.parStiffness = cVector3d(msgS2M.MMTParameters[3], msgS2M.MMTParameters[4], msgS2M.MMTParameters[5]);
+			MMT.SlavePar.Flag = msgS2M.MMTParameters[6];
+			std::cout << msgS2M.MMTParameters[6] << std::endl;
+
 			double vl[3];
 			memcpy(vl, msgM2S.waveVariable, 3 * sizeof(double));
 			WAVE.WV.vl = cVector3d(vl[0], vl[1], vl[2]);
@@ -1025,15 +1261,81 @@ void updateHaptics(void)
 			ISS.ForceRevise(MasterForce);
 			WAVE.ForceRevise(MasterVelocity, &WAVE.WV, MasterForce);
 
-			cVector3d force(MasterForce[0] - MasterVelocity[0] * 0.15, MasterForce[1] - MasterVelocity[1] * 0.15, MasterForce[2] - MasterVelocity[2] * 0.15);
-			cVector3d torque(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
-			double gripperForce = msgS2M.gripperForce;
-			tool->setDeviceLocalForce(force);
-			tool->setDeviceLocalTorque(torque);
-			tool->setGripperForce(gripperForce);
+			force=cVector3d(MasterForce[0] - MasterVelocity[0] * 0.15, MasterForce[1] - MasterVelocity[1] * 0.15, MasterForce[2] - MasterVelocity[2] * 0.15);
+			torque=cVector3d(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
+			gripperForce = msgS2M.gripperForce;
 			
-		}tool->applyToDevice();
+			
+		}
 
+		if (MMT.SlavePar.Flag) {
+			//update master's enviroment
+			MMT.SlavePar.Flag = false;
+			bulletBox0->setLocalPos(MMT.SlavePar.parPosition);
+			MMT.MasterPar.parStiffness = MMT.SlavePar.parStiffness;
+			//std::cout << "replace" << std::endl;
+		}
+		else {
+			//std::cout << "llllllllllllllllll" << std::endl;
+		}
+		tool->computeInteractionForces();
+		cHapticPoint* p = tool->getHapticPoint(0);
+		MMT.ForceRevise(force, p->getLocalPosGoal(), p->getLocalPosProxy());
+		tool->setDeviceLocalForce(force);
+		tool->setDeviceLocalTorque(torque);
+		tool->setGripperForce(gripperForce);
+		tool->applyToDevice();
+		/////////////////////////////////////////////////////////////////////
+		// SIMULATION TIME    
+		/////////////////////////////////////////////////////////////////////
+
+		// stop the simulation clock
+		clock.stop();
+
+		// read the time increment in seconds
+		double timeInterval = cClamp(clock.getcurrentTimeSeconds(), 0.0001, 0.001);
+
+		// restart the simulation clock
+		clock.reset();
+		clock.start();
+
+		/////////////////////////////////////////////////////////////////////
+		// DYNAMIC SIMULATION
+		/////////////////////////////////////////////////////////////////////
+
+		// for each interaction point of the tool we look for any contact events
+		// with the environment and apply forces accordingly
+		int numInteractionPoints = tool->getNumHapticPoints();
+		for (int i = 0; i<numInteractionPoints; i++)
+		{
+			// get pointer to next interaction point of tool
+			cHapticPoint* interactionPoint = tool->getHapticPoint(i);
+
+			// check all contact points
+			int numContacts = interactionPoint->getNumCollisionEvents();
+			for (int i = 0; i<numContacts; i++)
+			{
+				cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
+
+				// given the mesh object we may be touching, we search for its owner which
+				// could be the mesh itself or a multi-mesh object. Once the owner found, we
+				// look for the parent that will point to the Bullet object itself.
+				cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
+
+				// cast to Bullet object
+				cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
+
+				// if Bullet object, we apply interaction forces
+				if (bulletobject != NULL)
+				{
+					bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
+						collisionEvent->m_globalPos - object->getLocalPos());
+				}
+			}
+		}
+
+		// update simulation
+		world->updateDynamics(timeInterval);
 #pragma endregion
 
 
@@ -1053,7 +1355,7 @@ void updateGraphics(void)
 
 	// update haptic and graphic rate data
 	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz    S2M delay" + cStr(delay, 0) + " ");
+		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz    S2M delay" + cStr(delay, 3) + " ");
 
 	// update position of label
 	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);

@@ -60,6 +60,7 @@ struct hapticMessageS2M {
 	double gripperForce;
 	double energy[3];
 	double waveVariable[3];
+	double MMTParameters[7];
 };
 
 template<typename T>

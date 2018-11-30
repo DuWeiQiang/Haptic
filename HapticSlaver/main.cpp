@@ -73,6 +73,62 @@ double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sa
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
+class MMT_ALGORITHM {
+public:
+	/*
+	enviroment variable:
+		1. box position;
+		3. K used to calculate the force
+	*/
+	static struct envPar
+	{
+		cVector3d parPosition;
+		cVector3d parStiffness;
+		bool Flag;//whether this parameters is used to update the master's enviroment
+	};	
+	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
+	cVector3d oldStiffness;
+	int length = 100;
+	int index = 0;
+	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
+	cVector3d Average(cVector3d temp) {
+		if (index < 100) {
+			parStiffness[index] = temp;
+			index += 1;
+		}
+		else {
+			parStiffness[index % 100] = temp;
+			index = index % 100;
+		}
+		cVector3d avg;
+		for (int i = 0; i < 100; i++) {
+			avg += parStiffness[i];
+		}
+		avg /= 100;
+		return avg;
+	}
+
+	bool isTransmit() {		
+		for (int i = 0; i < 3; i++) {
+			// The threshold of  change rate is 10 percentage
+			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)				
+				return true;
+			// The threshold of  position offset is 0.1 meters
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1) {
+				return true;
+			}
+				
+		}
+		return false;
+	}
+
+	/*
+	dead band parameter
+	*/
+	double db;
+}MMT;
+
 class WAVE_ALGORITHM {
 public:
 	double b = 3;	//damping factor
@@ -221,22 +277,30 @@ bool mirroredDisplay = false;
 //------------------------------------------------------------------------------
 
 // a world that contains all objects of the virtual environment
-cBulletWorld* world;
+cBulletWorld* world,* world_MMT;
 
 // a camera to render the world in the window display
-cCamera* camera;
+cCamera* camera, *camera_MMT,* cameraMain;
+
+// Four view panels
+cViewPanel* viewPanel1;
+cViewPanel* viewPanel2;
+
+// Four framebuffer
+cFrameBufferPtr frameBuffer1;
+cFrameBufferPtr frameBuffer2;
 
 // a light source to illuminate the objects in the world
-cSpotLight *light;
+cSpotLight *light,* light_MMT;
 
 // a font for rendering text
-cFontPtr font;
+cFontPtr font, font_MMT;
 
 // a label to display the rate [Hz] at which the simulation is running
-cLabel* labelRates;
+cLabel* labelRates,* labelRates_MMT;
 
 // a virtual tool representing the haptic device in the scene
-cToolCursor* tool;
+cToolCursor* tool,* tool_MMT;
 
 // a flag for using damping (ON/OFF)
 bool useDamping = false;
@@ -251,7 +315,7 @@ bool simulationRunning = false;
 bool simulationFinished = true;
 
 // a frequency counter to measure the simulation graphic rate
-cFrequencyCounter freqCounterGraphics;
+cFrequencyCounter freqCounterGraphics, freqCounterGraphics_MMT;
 
 // a frequency counter to measure the simulation haptic rate
 cFrequencyCounter freqCounterHaptics;
@@ -280,16 +344,16 @@ LARGE_INTEGER cpuFreq;
 double delay;// M2S delay
 
 
-cBulletBox* bulletBox0;
-cBulletBox* bulletBox1;
+cBulletBox* bulletBox0, *bulletBox0_MMT;
+cBulletBox* bulletBox1, *bulletBox1_MMT;
 
 
 // bullet static walls and ground
-cBulletStaticPlane* bulletInvisibleWall1;
-cBulletStaticPlane* bulletInvisibleWall2;
-cBulletStaticPlane* bulletInvisibleWall3;
-cBulletStaticPlane* bulletInvisibleWall4;
-cBulletStaticPlane* bulletInvisibleWall5;
+cBulletStaticPlane* bulletInvisibleWall1,* bulletInvisibleWall1_MMT;
+cBulletStaticPlane* bulletInvisibleWall2,* bulletInvisibleWall2_MMT;
+cBulletStaticPlane* bulletInvisibleWall3,* bulletInvisibleWall3_MMT;
+cBulletStaticPlane* bulletInvisibleWall4,* bulletInvisibleWall4_MMT;
+cBulletStaticPlane* bulletInvisibleWall5,* bulletInvisibleWall5_MMT;
 
 cHapticDeviceInfo Falcon = {
 	C_HAPTIC_DEVICE_FALCON,
@@ -556,17 +620,16 @@ int main(int argc, char* argv[])
 	}
 #endif
 
-
 	//-----------------------------------------------------------------------
 	// WORLD - CAMERA - LIGHTING
 	//-----------------------------------------------------------------------
 
 	// create a new world.
 	world = new cBulletWorld();
-
+	
 	// set the background color of the environment
 	world->m_backgroundColor.setWhite();
-
+	
 	// create a camera and insert it into the virtual world
 	camera = new cCamera(world);
 	world->addChild(camera);
@@ -576,7 +639,7 @@ int main(int argc, char* argv[])
 		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
 		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
-									 // set the near and far clipping planes of the camera
+	// set the near and far clipping planes of the camera
 	camera->setClippingPlanes(0.01, 10.0);
 
 	// set stereo mode
@@ -721,6 +784,10 @@ int main(int argc, char* argv[])
 	// set position of each cube
 	bulletBox0->setLocalPos(0.0, -0.6, 0.5);
 	bulletBox1->setLocalPos(0.0, 0.6, 0.5);
+
+	bulletBox0->setGhostEnabled(true);
+	bulletBox1->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+	bulletBox1->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
 	//////////////////////////////////////////////////////////////////////////
 	// INVISIBLE WALLS
 	//////////////////////////////////////////////////////////////////////////
@@ -794,6 +861,226 @@ int main(int argc, char* argv[])
 	labelRates = new cLabel(font);
 	camera->m_frontLayer->addChild(labelRates);
 	
+
+	//-----------------------------------------------------------------------
+	// A COPY-WORLD - CAMERA - LIGHTING - Used by MMT algorithm
+	//-----------------------------------------------------------------------
+	// create a new world.
+	world_MMT = new cBulletWorld();
+
+	// set the background color of the environment
+	world_MMT->m_backgroundColor.setWhite();
+
+	// create a camera and insert it into the virtual world
+	camera_MMT = new cCamera(world_MMT);
+	world_MMT->addChild(camera_MMT);
+
+	// position and orient the camera
+	camera_MMT->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
+		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
+		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
+
+									 // set the near and far clipping planes of the camera
+	camera_MMT->setClippingPlanes(0.01, 10.0);
+
+	// set stereo mode
+	camera_MMT->setStereoMode(stereoMode);
+
+	// set stereo eye separation and focal length (applies only if stereo is enabled)
+	camera_MMT->setStereoEyeSeparation(0.02);
+	camera_MMT->setStereoFocalLength(2.0);
+
+	// set vertical mirrored display mode
+	camera_MMT->setMirrorVertical(mirroredDisplay);
+
+	// create a light source
+	light_MMT = new cSpotLight(world_MMT);
+
+	// attach light to camera
+	world_MMT->addChild(light_MMT);
+
+	// enable light source
+	light_MMT->setEnabled(true);
+
+	// position the light source
+	light_MMT->setLocalPos(0.0, 0.0, 2.2);
+
+	// define the direction of the light beam
+	light_MMT->setDir(0.0, 0.0, -1.0);
+
+	// set uniform concentration level of light 
+	light_MMT->setSpotExponent(0.0);
+
+	// enable this light source to generate shadows
+	light_MMT->setShadowMapEnabled(true);
+
+	// set the resolution of the shadow map
+	light_MMT->m_shadowMap->setQualityLow();
+	//light->m_shadowMap->setQualityMedium();
+
+	// set light cone half angle
+	light_MMT->setCutOffAngleDeg(45);
+
+	////////////////////////////////////////////////////////////////////////////
+	//// retrieve information about the current haptic device
+	//cHapticDeviceInfo info = hapticDevice->getSpecifications();-------------------operated by master
+
+	// create a tool (cursor) and insert into the world
+	tool_MMT = new cToolCursor(world_MMT);
+	world_MMT->addChild(tool_MMT);
+	// map the physical workspace of the haptic device to a larger virtual workspace.
+	tool_MMT->setWorkspaceRadius(1.3);
+
+	// define a radius for the tool
+	tool_MMT->setRadius(toolRadius);
+
+	// hide the device sphere. only show proxy.
+	tool_MMT->setShowContactPoints(true, true);
+
+	// enable if objects in the scene are going to rotate of translate
+	// or possibly collide against the tool. If the environment
+	// is entirely static, you can set this parameter to "false"
+	tool_MMT->enableDynamicObjects(true);
+
+	tool_MMT->m_hapticPoint->initialize();
+	tool_MMT->m_material->m_ambient.set(1.0, 1.0, 1.0);
+	tool_MMT->m_material->m_diffuse.set(1.0, 1.0, 1.0);
+	tool_MMT->m_material->m_specular.set(1.0, 1.0, 1.0);
+	tool_MMT->setTransparencyLevel(1);
+
+	world_MMT->setGravity(0.0, 0.0, -9.8);
+
+	//////////////////////////////////////////////////////////////////////////
+	// 3 BULLET BLOCKS
+	//////////////////////////////////////////////////////////////////////////
+
+	// create three objects that are added to the world
+	bulletBox0_MMT = new cBulletBox(world_MMT, size, size, size);
+	world_MMT->addChild(bulletBox0_MMT);
+
+	bulletBox1_MMT = new cBulletBox(world_MMT, size, size, size);
+	world_MMT->addChild(bulletBox1_MMT);
+
+	// define some material properties for each cube
+	bulletBox0_MMT->setMaterial(mat0);
+
+	bulletBox1_MMT->setMaterial(mat1);
+
+	// define some mass properties for each cube
+	bulletBox0_MMT->setMass(0.5);
+	bulletBox1_MMT->setMass(0.05);
+
+	// estimate their inertia properties
+	bulletBox0_MMT->estimateInertia();
+	bulletBox1_MMT->estimateInertia();
+
+	// create dynamic models
+	bulletBox0_MMT->buildDynamicModel();
+	bulletBox1_MMT->buildDynamicModel();
+
+
+	// create collision detector for haptic interaction
+	bulletBox0_MMT->createAABBCollisionDetector(toolRadius);
+	bulletBox1_MMT->createAABBCollisionDetector(toolRadius);
+
+
+	// set friction values
+	bulletBox0_MMT->setSurfaceFriction(0.4);
+	bulletBox1_MMT->setSurfaceFriction(0.4);
+
+
+	// set position of each cube
+	bulletBox0_MMT->setLocalPos(0.0, -0.6, 0.5);
+	bulletBox1_MMT->setLocalPos(0.0, 0.6, 0.5);
+
+	bulletBox0_MMT->setGhostEnabled(true);
+	bulletBox1_MMT->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+	bulletBox1_MMT->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
+	//////////////////////////////////////////////////////////////////////////
+	// INVISIBLE WALLS
+	//////////////////////////////////////////////////////////////////////////
+
+	// we create 5 static walls to contain the dynamic objects within a limited workspace
+	bulletInvisibleWall1_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
+	bulletInvisibleWall2_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, -1.0, 0.0), -planeWidth);
+	bulletInvisibleWall3_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 1.0, 0.0), -planeWidth);
+	bulletInvisibleWall4_MMT = new cBulletStaticPlane(world_MMT, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
+	bulletInvisibleWall5_MMT = new cBulletStaticPlane(world_MMT, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
+
+	//////////////////////////////////////////////////////////////////////////
+	// GROUND
+	//////////////////////////////////////////////////////////////////////////
+
+	// create ground plane
+	cBulletStaticPlane *ground_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 0.0, 1.0), 0);
+
+	// add plane to world as we will want to make it visibe
+	world_MMT->addChild(ground_MMT);
+
+	// create a mesh plane where the static plane is located
+	cCreatePlane(ground_MMT, 3.0, 3.0, cVector3d(0, 0, 0));
+
+	// define some material properties and apply to mesh
+	ground_MMT->setMaterial(matGround);
+
+	// setup collision detector for haptic interaction
+	ground_MMT->createAABBCollisionDetector(toolRadius);
+
+	// set friction values
+	ground_MMT->setSurfaceFriction(0.4);
+	// set material properties
+	ground_MMT->m_texture = cTexture2d::create();
+	fileload = ground_MMT->m_texture->loadFromFile("resources/wood.jpg");
+	if (!fileload)
+	{
+		std::cout << "Error - Texture image failed to load correctly." << std::endl;
+		close();
+		return (-1);
+	}
+
+	// enable texture mapping
+	ground_MMT->setUseTexture(true);
+	ground_MMT->m_material->setWhite();
+
+	// create normal map from texture data
+	cNormalMapPtr normalMap0_MMT = cNormalMap::create();
+	normalMap0_MMT->createMap(ground_MMT->m_texture);
+	ground_MMT->m_normalMap = normalMap0_MMT;
+	//--------------------------------------------------------------------------
+	// WIDGETS
+	//--------------------------------------------------------------------------
+
+	// create a font
+	font_MMT = NEW_CFONTCALIBRI20();
+
+	// create a label to display the haptic and graphic rate of the simulation
+	labelRates_MMT = new cLabel(font_MMT);
+	camera_MMT->m_frontLayer->addChild(labelRates_MMT);
+
+	//--------------------------------------------------------------------------
+	// FRAMEBUFFERS
+	//--------------------------------------------------------------------------
+
+	// create framebuffer for view 1
+	frameBuffer1 = cFrameBuffer::create();
+	frameBuffer1->setup(camera);
+
+	// create framebuffer for view 2
+	frameBuffer2 = cFrameBuffer::create();
+	frameBuffer2->setup(camera_MMT);
+
+	//--------------------------------------------------------------------------
+	// VIEW PANELS
+	//--------------------------------------------------------------------------
+	cameraMain = new cCamera(NULL);
+	// create and setup view panel 1
+	viewPanel1 = new cViewPanel(frameBuffer1);
+	cameraMain->m_frontLayer->addChild(viewPanel1);
+
+	// create and setup view panel 2
+	viewPanel2 = new cViewPanel(frameBuffer2);
+	cameraMain->m_frontLayer->addChild(viewPanel2);
+
 	//--------------------------------------------------------------------------
 	// START SIMULATION
 	//--------------------------------------------------------------------------
@@ -846,6 +1133,21 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
 	// update window size
 	width = a_width;
 	height = a_height;
+
+	int halfW = width / 2;
+	int halfH = height / 2;
+	int offset = 1;
+
+	// update display panel sizes and positions
+	viewPanel1->setLocalPos(0.0, 0.0);
+	viewPanel1->setSize(width, halfH);
+
+	viewPanel2->setLocalPos(0.0, halfH + offset);
+	viewPanel2->setSize(width, halfH);
+
+	// update frame buffer sizes
+	frameBuffer1->setSize(width, halfH);
+	frameBuffer2->setSize(width, halfH);
 }
 
 //------------------------------------------------------------------------------
@@ -960,12 +1262,14 @@ void updateHaptics(void)
 	clock.reset();
 	__int64 lastCounter = 0;
 	QueryPerformanceCounter((LARGE_INTEGER *)&lastCounter);
+
 	// main haptic simulation loop
 	while (simulationRunning)
 	{
 
 		// compute global reference frames for each object
 		world->computeGlobalPositions(true);
+		world_MMT->computeGlobalPositions(true);
 		/////////////////////////////////////////////////////////////////////
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
@@ -979,18 +1283,113 @@ void updateHaptics(void)
 
 			unsigned int hapticMsgL = sizeof(hapticMessageM2S);
 			unsigned int i = 0;
-			for (; i < unprocessedPtr / hapticMsgL - 1; i++) {
+			for (; i < unprocessedPtr / hapticMsgL; i++) {
 				commandQ.push(*(hapticMessageM2S*)(recData + i* hapticMsgL));
 			}
-			std::queue<hapticMessageM2S> empty;
-			commandQ.swap(empty);
-			commandQ.push(*(hapticMessageM2S*)(recData + i* hapticMsgL));
+			//std::queue<hapticMessageM2S> empty;
+			//commandQ.swap(empty);
+			//commandQ.push(*(hapticMessageM2S*)(recData + i* hapticMsgL));
 			unsigned int processedPtr = (unprocessedPtr / hapticMsgL) * hapticMsgL;
 			unprocessedPtr %= hapticMsgL;
 
 			for (unsigned int i = 0; i < unprocessedPtr; i++) {
 				recData[i] = recData[processedPtr + i];
 			}
+		}
+		while (commandQ.size()) {
+			msgM2S = commandQ.front();
+			
+
+			// read position 
+			cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
+
+			// read orientation 
+			cVector3d col0(msgM2S.rotation[0], msgM2S.rotation[1], msgM2S.rotation[2]);
+			cVector3d col1(msgM2S.rotation[3], msgM2S.rotation[4], msgM2S.rotation[5]);
+			cVector3d col2(msgM2S.rotation[6], msgM2S.rotation[7], msgM2S.rotation[8]);
+			cMatrix3d rotation(col0, col1, col2);
+
+			// read gripper position
+			double gripperAngle = msgM2S.gripperAngle;
+
+			// read linear velocity 
+			cVector3d linearVelocity(msgM2S.linearVelocity[0], msgM2S.linearVelocity[1], msgM2S.linearVelocity[2]);
+
+			// read angular velocity
+			cVector3d angularVelocity(msgM2S.angularVelocity[0], msgM2S.angularVelocity[1], msgM2S.angularVelocity[2]);
+
+			// read gripper angular velocity
+			double gripperAngularVelocity = msgM2S.gripperAngularVelocity;
+
+			unsigned int allSwitches = msgM2S.userSwitches;
+
+			// read user-switch status (button 0)
+			bool button0, button1, button2, button3;
+			button0 = msgM2S.button0;
+			button1 = msgM2S.button1;
+			button2 = msgM2S.button2;
+			button3 = msgM2S.button3;
+
+			tool_MMT->setDeviceLocalPos(position);
+			tool_MMT->setDeviceLocalRot(rotation);
+			tool_MMT->setDeviceLocalAngVel(angularVelocity);
+			tool_MMT->setDeviceLocalLinVel(linearVelocity);
+			tool_MMT->setUserSwitches(allSwitches);
+			tool_MMT->setGripperAngleRad(gripperAngle);
+			tool_MMT->setGripperAngVel(gripperAngularVelocity);
+			tool_MMT->setUserSwitch(0, button0);
+			tool_MMT->setUserSwitch(1, button1);
+			tool_MMT->setUserSwitch(2, button2);
+			tool_MMT->setUserSwitch(3, button3);
+			/////////////////////////////////////////////////////////////////////
+			// COMPUTE AND APPLY FORCES
+			/////////////////////////////////////////////////////////////////////
+
+			// compute interaction forces
+			tool_MMT->computeInteractionForces();
+
+			int numInteractionPoints = tool_MMT->getNumHapticPoints();
+			for (int i = 0; i<numInteractionPoints; i++)
+			{
+				// get pointer to next interaction point of tool
+				cHapticPoint* interactionPoint = tool_MMT->getHapticPoint(i);
+
+				// check all contact points
+				int numContacts = interactionPoint->getNumCollisionEvents();
+				for (int i = 0; i<numContacts; i++)
+				{
+					cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
+
+					// given the mesh object we may be touching, we search for its owner which
+					// could be the mesh itself or a multi-mesh object. Once the owner found, we
+					// look for the parent that will point to the Bullet object itself.
+					cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
+
+					// cast to Bullet object
+					cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
+
+					// if Bullet object, we apply interaction forces
+					if (bulletobject != NULL)
+					{
+						bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
+							collisionEvent->m_globalPos - object->getLocalPos());
+					}
+				}
+			}
+
+			// update simulation
+			world_MMT->updateDynamics(0.001);
+
+			MMT.MasterPar.parPosition = bulletBox0_MMT->getLocalPos();
+			
+
+			if (commandQ.size() > 1) {
+				commandQ.pop();				
+			}
+			if (commandQ.size() == 1) {
+				break;
+			}
+				
 		}
 		if (commandQ.size()) {
 
@@ -1108,6 +1507,16 @@ void updateHaptics(void)
 			
 			double ur[3] = { WAVE.WV.ur.x(), WAVE.WV.ur.y(), WAVE.WV.ur.z() };
 
+			MMT_ALGORITHM::envPar MMTParameters;
+			if (MMT.isTransmit()) {
+				MMTParameters = MMT.SlavePar;
+				MMT.MasterPar = MMT.SlavePar;
+				MMT.MasterPar.Flag = false;
+			}
+			else {
+				MMTParameters = MMT.MasterPar;				
+			}
+
 			MasterForce[0] = force.x();
 			MasterForce[1] = force.y();
 			MasterForce[2] = force.z();
@@ -1136,7 +1545,10 @@ void updateHaptics(void)
 			for (int i = 0; i < 3; i++) {
 				msgS2M.force[i] = MasterForce[i];// modified by TDPA
 				msgS2M.torque[i] = torque(i);
+				msgS2M.MMTParameters[i] = MMTParameters.parPosition(i);
+				msgS2M.MMTParameters[i+3] = MMTParameters.parStiffness(i);
 			}
+			msgS2M.MMTParameters[6] = MMTParameters.Flag;
 			msgS2M.gripperForce = gripperForce;
 			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
 			memcpy(msgS2M.waveVariable, ur, 3 * sizeof(double));
@@ -1200,7 +1612,17 @@ void updateHaptics(void)
 
 		// update simulation
 		world->updateDynamics(timeInterval);
+		MMT.SlavePar.parPosition = bulletBox0->getLocalPos();
+		cHapticPoint* p = tool->getHapticPoint(0);
 		
+		for (int i = 0; i < 3; i++) {
+			double deltaX = p->getLocalPosGoal()(i) - p->getLocalPosProxy()(i);
+			if (deltaX) {
+				MMT.oldStiffness(i) = abs(p->getLastComputedForce()(i) / deltaX);
+			}			
+		}
+		//MMT.oldStiffness = cTransform(tool->getGlobalRot())*MMT.oldStiffness;
+		MMT.SlavePar.parStiffness = MMT.Average(MMT.oldStiffness);
 	}
 
 	// exit haptics thread
@@ -1224,12 +1646,18 @@ void updateGraphics(void)
 	/////////////////////////////////////////////////////////////////////
 	// RENDER SCENE
 	/////////////////////////////////////////////////////////////////////
-
+	
 	// update shadow maps (if any)
 	world->updateShadowMaps(false, mirroredDisplay);
+	
+	world_MMT->updateShadowMaps(false, mirroredDisplay);
+
+	// render all framebuffers
+	frameBuffer1->renderView();
+	frameBuffer2->renderView();
 
 	// render world
-	camera->renderView(width, height);
+	cameraMain->renderView(width, height);
 
 	// wait until all OpenGL commands are completed
 	glFinish();
