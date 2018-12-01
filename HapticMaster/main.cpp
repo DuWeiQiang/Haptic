@@ -77,10 +77,13 @@ double MasterForce[3] = { 0.0, 0.0, 0.0 };
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
 
+double MasterTorque[3] = { 0.0, 0.0, 0.0 };
+double MasterGripperForce = 0.0;
 AlgorithmType ATypeChange = AlgorithmType::AT_None;
 
 class MMT_ALGORITHM {
 public:
+	bool enable = false;
 	/*
 	enviroment variable:
 	1. box position;
@@ -93,19 +96,35 @@ public:
 		bool Flag;//whether this parameters is used to update the master's enviroment
 	};
 	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
+	cVector3d oldStiffness;
 	int length = 100;
 	int index = 0;
 	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
 
-	void ForceRevise(cVector3d &force, cVector3d goalPos, cVector3d proxyPos) {
-		force = MasterPar.parStiffness;
-		force.mulElement(proxyPos - goalPos);
+	void ForceRevise(double* force, cVector3d goalPos, cVector3d proxyPos) {
+		if (!enable)return;
+		cVector3d Temp = MasterPar.parStiffness;
+		Temp.mulElement(proxyPos - goalPos);
+		force[0] = Temp(0);
+		force[1] = Temp(1);
+		force[2] = Temp(2);
+	}
+
+	void Initialize() {
+		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
+		index = 0;
+		oldStiffness = cVector3d(0, 0, 0);
+		for (int i = 0; i < 100; i++) {
+			parStiffness[i] = cVector3d(0, 0, 0);
+		}
 	}
 
 	cVector3d Average(cVector3d temp) {
 		if (index < 100) {
 			parStiffness[index] = temp;
+			index += 1;
 		}
 		else {
 			parStiffness[index % 100] = temp;
@@ -121,9 +140,11 @@ public:
 
 	bool isTransmit() {
 		for (int i = 0; i < 3; i++) {
-			if (abs(MasterPar.parStiffness(i) - SlavePar.parStiffness(i)) > db)
+			// The threshold of  change rate is 10 percentage
+			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
 				return true;
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > db)
+			// The threshold of  position offset is 0.1 meters
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
 				return true;
 		}
 		return false;
@@ -630,7 +651,7 @@ int main(int argc, char* argv[])
 
 	// create a new world.
 	world = new cBulletWorld();
-
+	world->setEnabled(false, true);
 	// set the background color of the environment
 	world->m_backgroundColor.setWhite();
 
@@ -794,7 +815,7 @@ int main(int argc, char* argv[])
 
 
 	// create dynamic models
-	bulletBox0->buildDynamicModel();
+	//bulletBox0->buildDynamicModel();
 	bulletBox1->buildDynamicModel();
 
 
@@ -877,6 +898,7 @@ int main(int argc, char* argv[])
 	cNormalMapPtr normalMap0 = cNormalMap::create();
 	normalMap0->createMap(ground->m_texture);
 	ground->m_normalMap = normalMap0;
+	world->setEnabled(false, true);
 	//--------------------------------------------------------------------------
 	// MAIN GRAPHIC LOOP
 	//--------------------------------------------------------------------------
@@ -995,8 +1017,14 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	// option - toggle vertical mirroring
 	else if (a_key == GLFW_KEY_M)
 	{
-		mirroredDisplay = !mirroredDisplay;
-		camera->setMirrorVertical(mirroredDisplay);
+		std::cout << "MMT enabled" << std::endl;
+		MMT.enable = true;
+		MMT.Initialize();
+		world->setEnabled(true, true);
+		ATypeChange = AlgorithmType::AT_MMT;
+
+		ISS.ISS_enabled = false;
+		TDPA.TDPAon = false;
 	}
 
 	else if (a_key == GLFW_KEY_I) {
@@ -1005,6 +1033,8 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		ISS.Initialize();
 		ATypeChange = AlgorithmType::AT_ISS;
 
+		MMT.enable = false;
+		world->setEnabled(false, true);
 		TDPA.TDPAon = false;
 	}
 	else if (a_key == GLFW_KEY_T) {
@@ -1013,10 +1043,16 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		TDPA.Initialize();
 		ATypeChange = AlgorithmType::AT_TDPA;
 
+		MMT.enable = false;
+		world->setEnabled(false, true);
 		ISS.ISS_enabled = false;
 	}
 	else if (a_key == GLFW_KEY_N) {
 		std::cout << "None enabled" << std::endl;
+
+		MMT.enable = false;
+		world->setEnabled(false, true);
+		ATypeChange = AlgorithmType::AT_None;
 		TDPA.TDPAon = false;
 		ISS.ISS_enabled = false;
 	}
@@ -1065,9 +1101,7 @@ void updateHaptics(void)
 	__int64 beginTime;
 	QueryPerformanceCounter((LARGE_INTEGER *)&beginTime);
 
-	cVector3d force = cVector3d(0, 0, 0);
-	cVector3d torque = cVector3d(0, 0, 0);
-	double gripperForce = 0;
+
 
 	while (simulationRunning)
 	{
@@ -1238,12 +1272,13 @@ void updateHaptics(void)
 
 			//get force and energy from Slave2Master message
 			memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
+			memcpy(MasterTorque, msgS2M.torque, 3 * sizeof(double));
+			MasterGripperForce = msgS2M.gripperForce;
 			memcpy(TDPA.E_recv, msgS2M.energy, 3 * sizeof(double));
 			MMT.SlavePar.parPosition = cVector3d(msgS2M.MMTParameters[0], msgS2M.MMTParameters[1], msgS2M.MMTParameters[2]);
 			MMT.SlavePar.parStiffness = cVector3d(msgS2M.MMTParameters[3], msgS2M.MMTParameters[4], msgS2M.MMTParameters[5]);
 			MMT.SlavePar.Flag = msgS2M.MMTParameters[6];
-			std::cout << msgS2M.MMTParameters[6] << std::endl;
-
+			
 			double vl[3];
 			memcpy(vl, msgM2S.waveVariable, 3 * sizeof(double));
 			WAVE.WV.vl = cVector3d(vl[0], vl[1], vl[2]);
@@ -1261,26 +1296,26 @@ void updateHaptics(void)
 			ISS.ForceRevise(MasterForce);
 			WAVE.ForceRevise(MasterVelocity, &WAVE.WV, MasterForce);
 
-			force=cVector3d(MasterForce[0] - MasterVelocity[0] * 0.15, MasterForce[1] - MasterVelocity[1] * 0.15, MasterForce[2] - MasterVelocity[2] * 0.15);
-			torque=cVector3d(msgS2M.torque[0], msgS2M.torque[1], msgS2M.torque[2]);
-			gripperForce = msgS2M.gripperForce;
+			
 			
 			
 		}
-
+		
 		if (MMT.SlavePar.Flag) {
 			//update master's enviroment
 			MMT.SlavePar.Flag = false;
-			bulletBox0->setLocalPos(MMT.SlavePar.parPosition);
+			bulletBox1->setLocalPos(MMT.SlavePar.parPosition);
 			MMT.MasterPar.parStiffness = MMT.SlavePar.parStiffness;
-			//std::cout << "replace" << std::endl;
-		}
-		else {
-			//std::cout << "llllllllllllllllll" << std::endl;
+			
 		}
 		tool->computeInteractionForces();
+		
 		cHapticPoint* p = tool->getHapticPoint(0);
-		MMT.ForceRevise(force, p->getLocalPosGoal(), p->getLocalPosProxy());
+		MMT.ForceRevise(MasterForce, p->getLocalPosGoal(), p->getLocalPosProxy());
+
+		cVector3d force=cVector3d(MasterForce[0] - MasterVelocity[0] * 0.15, MasterForce[1] - MasterVelocity[1] * 0.15, MasterForce[2] - MasterVelocity[2] * 0.15);
+		cVector3d torque=cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]);
+		double gripperForce = MasterGripperForce;
 		tool->setDeviceLocalForce(force);
 		tool->setDeviceLocalTorque(torque);
 		tool->setGripperForce(gripperForce);

@@ -75,23 +75,41 @@ double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
 class MMT_ALGORITHM {
 public:
+	bool enable = false;
 	/*
 	enviroment variable:
-		1. box position;
-		3. K used to calculate the force
+	1. box position;
+	3. K used to calculate the force
 	*/
 	static struct envPar
 	{
 		cVector3d parPosition;
 		cVector3d parStiffness;
 		bool Flag;//whether this parameters is used to update the master's enviroment
-	};	
+	};
 	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
 	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
 	cVector3d oldStiffness;
 	int length = 100;
 	int index = 0;
 	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
+
+	void ForceRevise(cVector3d &force, cVector3d goalPos, cVector3d proxyPos) {
+		if (!enable)return;
+		force = MasterPar.parStiffness;
+		force.mulElement(proxyPos - goalPos);
+	}
+
+	void Initialize() {
+		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
+		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
+		index = 0;
+		oldStiffness = cVector3d(0, 0, 0);
+		for (int i = 0; i < 100; i++) {
+			parStiffness[i] = cVector3d(0, 0, 0);
+		}
+	}
+
 	cVector3d Average(cVector3d temp) {
 		if (index < 100) {
 			parStiffness[index] = temp;
@@ -109,16 +127,14 @@ public:
 		return avg;
 	}
 
-	bool isTransmit() {		
+	bool isTransmit() {
 		for (int i = 0; i < 3; i++) {
 			// The threshold of  change rate is 10 percentage
-			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)				
+			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
 				return true;
 			// The threshold of  position offset is 0.1 meters
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1) {
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
 				return true;
-			}
-				
 		}
 		return false;
 	}
@@ -767,7 +783,7 @@ int main(int argc, char* argv[])
 	
 
 	// create dynamic models
-	bulletBox0->buildDynamicModel();
+	//bulletBox0->buildDynamicModel();
 	bulletBox1->buildDynamicModel();
 	
 
@@ -975,7 +991,7 @@ int main(int argc, char* argv[])
 	bulletBox1_MMT->estimateInertia();
 
 	// create dynamic models
-	bulletBox0_MMT->buildDynamicModel();
+	//bulletBox0_MMT->buildDynamicModel();
 	bulletBox1_MMT->buildDynamicModel();
 
 
@@ -1046,6 +1062,7 @@ int main(int argc, char* argv[])
 	cNormalMapPtr normalMap0_MMT = cNormalMap::create();
 	normalMap0_MMT->createMap(ground_MMT->m_texture);
 	ground_MMT->m_normalMap = normalMap0_MMT;
+	world_MMT->setEnabled(false, true);
 	//--------------------------------------------------------------------------
 	// WIDGETS
 	//--------------------------------------------------------------------------
@@ -1380,7 +1397,7 @@ void updateHaptics(void)
 			// update simulation
 			world_MMT->updateDynamics(0.001);
 
-			MMT.MasterPar.parPosition = bulletBox0_MMT->getLocalPos();
+			MMT.MasterPar.parPosition = bulletBox1_MMT->getLocalPos();
 			
 
 			if (commandQ.size() > 1) {
@@ -1441,17 +1458,30 @@ void updateHaptics(void)
 
 			switch (msgM2S.ATypeChange) {
 			case AlgorithmType::AT_None:
+				ControlMode = 0;
 				TDPA.TDPAon = false;
+				MMT.enable = false;
+				world_MMT->setEnabled(false, true);
 				break;
 			case AlgorithmType::AT_TDPA:
+				ControlMode = 1;
 				TDPA.TDPAon = true;
 				TDPA.Initialize();
+				MMT.enable = false;
+				world_MMT->setEnabled(false, true);
 				break;
 			case AlgorithmType::AT_ISS:
+				ControlMode = 1;
 				TDPA.TDPAon = false;
+				MMT.enable = false;
+				world_MMT->setEnabled(false, true);
 				break;
 			case AlgorithmType::AT_MMT:
+				ControlMode = 0;
 				TDPA.TDPAon = false;
+				MMT.enable = true;
+				MMT.Initialize();
+				world_MMT->setEnabled(true, true);
 				break;
 			case AlgorithmType::AT_KEEP:
 				break;
@@ -1512,6 +1542,7 @@ void updateHaptics(void)
 				MMTParameters = MMT.SlavePar;
 				MMT.MasterPar = MMT.SlavePar;
 				MMT.MasterPar.Flag = false;
+				bulletBox1_MMT->setLocalPos(MMT.SlavePar.parPosition);
 			}
 			else {
 				MMTParameters = MMT.MasterPar;				
@@ -1612,7 +1643,7 @@ void updateHaptics(void)
 
 		// update simulation
 		world->updateDynamics(timeInterval);
-		MMT.SlavePar.parPosition = bulletBox0->getLocalPos();
+		MMT.SlavePar.parPosition = bulletBox1->getLocalPos();
 		cHapticPoint* p = tool->getHapticPoint(0);
 		
 		for (int i = 0; i < 3; i++) {

@@ -1,4 +1,6 @@
 	state:
+		add position reset to fix position drift
+
 		add MMT algorithm.
 
 		fix some small bugs: 1. 1khz problem : 1ms counter related code(main.c in salve 1148-1151) cause the process frequency lower than 1KHz, move these codes to line 1148.
@@ -45,4 +47,3 @@
 	future work:
 		add more algorithm
 
-		add position reset
