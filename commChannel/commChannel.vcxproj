@@ -142,7 +142,7 @@
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;HAVE_CONFIG_H;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;CMAKE_INTDIR="Release";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\WIN32-Code;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\external\libevent\include;..\external\libevent\vs2015sln\include;..\external\libevent\compat;..\external\libevent\WIN32-Code;..\external\libevent;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
