@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticSlaver", "HapticSlaver\HapticSlaver.vcxproj", "{9F84883B-331F-463F-B5E8-725DEB052B72}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticSlave", "HapticSlaver\HapticSlaver.vcxproj", "{9F84883B-331F-463F-B5E8-725DEB052B72}"
 	ProjectSection(ProjectDependencies) = postProject
 		{89755822-86E3-4209-8C0E-C03B9BF95018} = {89755822-86E3-4209-8C0E-C03B9BF95018}
 		{A9F01342-5463-4634-B1F9-BF98CD5591B0} = {A9F01342-5463-4634-B1F9-BF98CD5591B0}
@@ -29,6 +29,16 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		ReadMe.txt = ReadMe.txt
 	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "commChannel", "commChannel\commChannel.vcxproj", "{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}"
+	ProjectSection(ProjectDependencies) = postProject
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629} = {F16C600E-08C6-3B72-A7FC-CC0AC3500629}
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0} = {8DFC2233-5FE9-3F28-951C-45860E1623C0}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "event_core_shared", "external\libevent\vs2015sln\event_core_shared.vcxproj", "{8DFC2233-5FE9-3F28-951C-45860E1623C0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "event_extra_shared", "external\libevent\vs2015sln\event_extra_shared.vcxproj", "{F16C600E-08C6-3B72-A7FC-CC0AC3500629}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -86,6 +96,26 @@ Global
 		{9023B105-E852-48BD-ADE7-3C81C7F3ED89}.Release|x64.Build.0 = Release|x64
 		{9023B105-E852-48BD-ADE7-3C81C7F3ED89}.Release|x86.ActiveCfg = Release|Win32
 		{9023B105-E852-48BD-ADE7-3C81C7F3ED89}.Release|x86.Build.0 = Release|Win32
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Debug|x64.ActiveCfg = Debug|x64
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Debug|x64.Build.0 = Debug|x64
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Debug|x86.ActiveCfg = Debug|Win32
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Debug|x86.Build.0 = Debug|Win32
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Release|x64.ActiveCfg = Release|x64
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Release|x64.Build.0 = Release|x64
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Release|x86.ActiveCfg = Release|Win32
+		{A57BE6B1-DC56-473F-8E6A-4E1C89EA366C}.Release|x86.Build.0 = Release|Win32
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Debug|x64.ActiveCfg = Debug|x64
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Debug|x64.Build.0 = Debug|x64
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Debug|x86.ActiveCfg = Debug|x64
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Release|x64.ActiveCfg = Release|x64
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Release|x64.Build.0 = Release|x64
+		{8DFC2233-5FE9-3F28-951C-45860E1623C0}.Release|x86.ActiveCfg = Release|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Debug|x64.ActiveCfg = Debug|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Debug|x64.Build.0 = Debug|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Debug|x86.ActiveCfg = Debug|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Release|x64.ActiveCfg = Release|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Release|x64.Build.0 = Release|x64
+		{F16C600E-08C6-3B72-A7FC-CC0AC3500629}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,189 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1DB81973-6402-33AF-B130-0F60AA77380A}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <Platform>x64</Platform>
+    <ProjectName>time-test</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v140</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v140</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\bin\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">time-test.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">time-test</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\bin\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">time-test.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">time-test</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>Debug/</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <CompileAs>CompileAsC</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;HAVE_CONFIG_H;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;CMAKE_INTDIR="Debug";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;HAVE_CONFIG_H;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;CMAKE_INTDIR=\"Debug\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>ws2_32.lib;lib\Debug\event_extra.lib;lib\Debug\event_core.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/lib/Debug/time-test.lib</ImportLibrary>
+      <ProgramDataBaseFile>E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/bin/Debug/time-test.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>Release/</AssemblerListingLocation>
+      <CompileAs>CompileAsC</CompileAs>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;HAVE_CONFIG_H;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;CMAKE_INTDIR="Release";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;HAVE_CONFIG_H;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;CMAKE_INTDIR=\"Release\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\include;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\compat;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\.\WIN32-Code;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>ws2_32.lib;lib\Release\event_extra.lib;lib\Release\event_core.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/lib/Release/time-test.lib</ImportLibrary>
+      <ProgramDataBaseFile>E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/bin/Release/time-test.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SE:/PotatoFaker/Project/hapticApp/Haptic/external/libevent -BE:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln --check-stamp-file E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/CMakeLists.txt;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeParseArguments.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCCompilerFlag.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\WindowsPaths.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\CMakeLists.txt;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\AddCompilerFlags.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\AddEventLibrary.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckConstExists.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFileOffsetBits.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFunctionExistsEx.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFunctionKeywords.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckPrototypeDefinition.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\FindGit.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfig.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfigBuildTree.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfigVersion.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\VersionViaGit.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\evconfig-private.h.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\event-config.h.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent_core.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent_extra.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeCCompiler.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeRCCompiler.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeSystem.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SE:/PotatoFaker/Project/hapticApp/Haptic/external/libevent -BE:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln --check-stamp-file E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/vs2015sln/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">E:/PotatoFaker/Project/hapticApp/Haptic/external/libevent/CMakeLists.txt;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeParseArguments.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCCompilerFlag.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.13\Modules\Platform\WindowsPaths.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\CMakeLists.txt;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\AddCompilerFlags.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\AddEventLibrary.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckConstExists.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFileOffsetBits.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFunctionExistsEx.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckFunctionKeywords.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\CheckPrototypeDefinition.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\FindGit.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfig.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfigBuildTree.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\LibeventConfigVersion.cmake.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\cmake\VersionViaGit.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\evconfig-private.h.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\event-config.h.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent_core.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\libevent_extra.pc.in;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeCCompiler.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeRCCompiler.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\3.13.0\CMakeSystem.cmake;E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\sample\time-test.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\event_core_shared.vcxproj">
+      <Project>{8DFC2233-5FE9-3F28-951C-45860E1623C0}</Project>
+      <Name>event_core_shared</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="E:\PotatoFaker\Project\hapticApp\Haptic\external\libevent\vs2015sln\event_extra_shared.vcxproj">
+      <Project>{F16C600E-08C6-3B72-A7FC-CC0AC3500629}</Project>
+      <Name>event_extra_shared</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
