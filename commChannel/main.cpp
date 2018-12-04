@@ -1,142 +1,247 @@
-/*
-This example program provides a trivial server program that listens for TCP
-connections on port 9995.  When they arrive, it writes a short message to
-each client connection, and closes each connection once it is flushed.
 
-Where possible, it exits cleanly in response to a SIGINT (ctrl-c).
-*/
+/* For fcntl */
+#include <fcntl.h>
+#include <ws2tcpip.h>
+#include <event2/event.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
 
+#include <assert.h>
 
 #include <string.h>
-#include <errno.h>
+#include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
-#ifndef _WIN32
-#include <netinet/in.h>
-# ifdef _XOPEN_SOURCE_EXTENDED
-#  include <arpa/inet.h>
-# endif
-#include <sys/socket.h>
-#endif
+#include <errno.h>
+#include "commTool.cpp"
+#define MAX_LINE 16384
 
-#include <event2/bufferevent.h>
-#include <event2/buffer.h>
-#include <event2/listener.h>
-#include <event2/util.h>
-#include <event2/event.h>
+socketInfo socketQueue[2];
 
-static const char MESSAGE[] = "Hello, World!\n";
+int ConnectIndex = 0;
 
-static const int PORT = 9995;
+threadsafe_queue<myMessage> msgQ;
 
-static void listener_cb(struct evconnlistener *, evutil_socket_t,
-	struct sockaddr *, int socklen, void *);
-static void conn_writecb(struct bufferevent *, void *);
-static void conn_eventcb(struct bufferevent *, short, void *);
-static void signal_cb(evutil_socket_t, short, void *);
-
-int
-main(int argc, char **argv)
+char
+rot13_char(char c)
 {
-	struct event_base *base;
-	struct evconnlistener *listener;
-	struct event *signal_event;
+	/* We don't want to use isalpha here; setting the locale would change
+	* which characters are considered alphabetical. */
+	if ((c >= 'a' && c <= 'm') || (c >= 'A' && c <= 'M'))
+		return c + 13;
+	else if ((c >= 'n' && c <= 'z') || (c >= 'N' && c <= 'Z'))
+		return c - 13;
+	else
+		return c;
+}
 
+void
+readcb(struct bufferevent *bev, void *ctx)
+{
+	struct evbuffer *input, *output = NULL;
+	size_t n;
+	int i;
+	input = bufferevent_get_input(bev);
+	myMessage msg;
+
+	struct socketInfo(*p)[2] = (struct socketInfo(*)[2])ctx;
+	int myFD = bufferevent_getfd(bev);
+	if (myFD == (*p)[0].fd) {
+		//send to 1 fd
+
+		msg.oPort = (*p)[1].fd;
+		QueryPerformanceCounter((LARGE_INTEGER *)&msg.timestamp);
+		msg.msgLength = evbuffer_remove(input, msg.msgPtr, sizeof(msg.msgPtr));
+
+		printf("receive %d bytes\n", msg.msgLength);
+		msgQ.push(msg);
+		//std::cout << msgQ.length() << std::endl;
+		//if ((*p)[1].fd != INVALID_SOCKET) {
+		//	//bufferevent_read_buffer(bev,
+		//	//	bufferevent_get_output((*p)[1].bev));
+		//	output = bufferevent_get_output((*p)[1].bev);
+		//}
+	}
+	else {
+		msg.oPort = (*p)[0].fd;
+		QueryPerformanceCounter((LARGE_INTEGER *)&msg.timestamp);
+		msg.msgLength = evbuffer_remove(input, msg.msgPtr, sizeof(msg.msgPtr));
+
+		printf("receive %d bytes\n", msg.msgLength);
+		msgQ.push(msg);
+		//send to 0 fd
+		//if ((*p)[0].fd != INVALID_SOCKET) {
+		//	//bufferevent_read_buffer(bev,
+		//	//	bufferevent_get_output((*p)[0].bev));
+		//	output = bufferevent_get_output((*p)[0].bev);
+		//}
+	}
+	
+	//char buf[1024];
+	//while (evbuffer_get_length(input)) {
+	//	int n = evbuffer_remove(input, buf, sizeof(buf));
+	//	for (i = 0; i < n; ++i)
+	//		buf[i] = rot13_char(buf[i]);
+	//	if (output != NULL)
+	//		evbuffer_add(output, buf, n);
+	//}
+	
+	//while ((line = evbuffer_readln(input, &n, EVBUFFER_EOL_LF))) {
+	//	for (i = 0; i < n; ++i)
+	//		line[i] = rot13_char(line[i]);
+	//	evbuffer_add(output, line, n);
+	//	evbuffer_add(output, "\n", 1);
+	//	free(line);
+	//}
+
+	//if (evbuffer_get_length(input) >= MAX_LINE) {
+		/* Too long; just process what there is and go on so that the buffer
+		* doesn't grow infinitely long. */
+	//char buf[1024];
+	//while (evbuffer_get_length(input)) {
+	//	int n = evbuffer_remove(input, buf, sizeof(buf));
+	//	for (i = 0; i < n; ++i)
+	//		buf[i] = rot13_char(buf[i]);
+	//	evbuffer_add(output, buf, n);
+	//}
+	//evbuffer_add(output, "\n", 1);
+	//}
+}
+
+void
+errorcb(struct bufferevent *bev, short error, void *ctx)
+{
+	if (error & BEV_EVENT_EOF) {
+		/* connection has been closed, do any clean up here */
+		/* ... */
+	}
+	else if (error & BEV_EVENT_ERROR) {
+		/* check errno to see what error occurred */
+		/* ... */
+	}
+	else if (error & BEV_EVENT_TIMEOUT) {
+		/* must be a timeout event handle, handle it */
+		/* ... */
+	}
+	
+	struct socketInfo(*p)[2] = (struct socketInfo(*)[2])ctx;
+	int myFD = bufferevent_getfd(bev);
+	printf("%d Closed\n", myFD);
+	if (myFD == (*p)[0].fd) {
+		//send to 1 fd		
+		(*p)[0].fd = INVALID_SOCKET;
+	}
+	else {
+		(*p)[1].fd = INVALID_SOCKET;
+	}
+
+
+	bufferevent_free(bev);
+}
+
+void
+do_accept(evutil_socket_t listener, short event, void *arg)
+{
+	struct event_base *base = (struct event_base *)arg;
+	struct sockaddr_storage ss;
+	socklen_t slen = sizeof(ss);
+	int fd = accept(listener, (struct sockaddr*)&ss, &slen);
+	
+	if (fd < 0) {
+		perror("accept");
+	}
+	
+	struct sockaddr_in ip_adr_get;
+	int ip_adr_len;
+	ip_adr_len = sizeof(ip_adr_get);
+	getpeername(fd, (sockaddr*)&ip_adr_get, &ip_adr_len);
+	printf("IP address is: %s\n", inet_ntoa(ip_adr_get.sin_addr));
+	printf("Port is: %d\n", (int)ntohs(ip_adr_get.sin_port));
+
+	struct bufferevent *bev;
+	evutil_make_socket_nonblocking(fd);
+	bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+	bufferevent_setcb(bev, readcb, NULL, errorcb, socketQueue);
+	bufferevent_setwatermark(bev, EV_READ, 0, MAX_LINE);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+
+	while (socketQueue[ConnectIndex].fd != INVALID_SOCKET) {
+		ConnectIndex++;
+	}
+	socketQueue[ConnectIndex].fd = fd;
+	socketQueue[ConnectIndex].bev = bev;
+	ConnectIndex = 0;
+}
+
+void
+run(void)
+{
+	evutil_socket_t listener;
 	struct sockaddr_in sin;
+	struct event_base *base;
+	struct event *listener_event;
+
 #ifdef _WIN32
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);
 #endif
 
 	base = event_base_new();
-	if (!base) {
-		fprintf(stderr, "Could not initialize libevent!\n");
-		return 1;
-	}
+	if (!base)
+		return; /*XXXerr*/
 
-	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(PORT);
+	sin.sin_addr.s_addr = INADDR_ANY;
+	sin.sin_port = htons(40713);
 
-	listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
-		LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE, -1,
-		(struct sockaddr*)&sin,
-		sizeof(sin));
+	listener = socket(AF_INET, SOCK_STREAM, 0);
+	evutil_make_socket_nonblocking(listener);
 
-	if (!listener) {
-		fprintf(stderr, "Could not create a listener!\n");
-		return 1;
+#ifndef WIN32
+	{
+		int one = 1;
+		setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 	}
+#endif
 
-	signal_event = evsignal_new(base, SIGINT, signal_cb, (void *)base);
-
-	if (!signal_event || event_add(signal_event, NULL)<0) {
-		fprintf(stderr, "Could not create/add a signal event!\n");
-		return 1;
-	}
-
-	event_base_dispatch(base);
-
-	evconnlistener_free(listener);
-	event_free(signal_event);
-	event_base_free(base);
-
-	printf("done\n");
-	return 0;
-}
-
-static void
-listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
-	struct sockaddr *sa, int socklen, void *user_data)
-{
-	struct event_base *base = user_data;
-	struct bufferevent *bev;
-
-	bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	if (!bev) {
-		fprintf(stderr, "Error constructing bufferevent!");
-		event_base_loopbreak(base);
+	if (bind(listener, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
+		perror("bind");
 		return;
 	}
-	bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
-	bufferevent_enable(bev, EV_WRITE);
-	bufferevent_disable(bev, EV_READ);
 
-	bufferevent_write(bev, MESSAGE, strlen(MESSAGE));
+	if (listen(listener, 16)<0) {
+		perror("listen");
+		return;
+	}
+
+	listener_event = event_new(base, listener, EV_READ | EV_PERSIST, do_accept, (void*)base);
+	/*XXX check it */
+	event_add(listener_event, NULL);
+
+	event_base_dispatch(base);
 }
 
-static void
-conn_writecb(struct bufferevent *bev, void *user_data)
+int
+main(int c, char **v)
 {
-	struct evbuffer *output = bufferevent_get_output(bev);
-	if (evbuffer_get_length(output) == 0) {
-		printf("flushed answer\n");
-		bufferevent_free(bev);
-	}
-}
+	socketQueue[0].fd = INVALID_SOCKET;
+	socketQueue[1].fd = INVALID_SOCKET;
 
-static void
-conn_eventcb(struct bufferevent *bev, short events, void *user_data)
-{
-	if (events & BEV_EVENT_EOF) {
-		printf("Connection closed.\n");
-	}
-	else if (events & BEV_EVENT_ERROR) {
-		printf("Got an error on the connection: %s\n",
-			strerror(errno));/*XXX win32*/
-	}
-	/* None of the other events can happen here, since we haven't enabled
-	* timeouts */
-	bufferevent_free(bev);
-}
+	std::cout << "hesllo world" << std::endl;
 
-static void
-signal_cb(evutil_socket_t sig, short events, void *user_data)
-{
-	struct event_base *base = user_data;
-	struct timeval delay = { 2, 0 };
+	Sender *sender = new Sender();
+	sender->Q = &msgQ;
+	sender->p = &socketQueue;
+	unsigned  uiThread1ID;
+	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
+		0,             // stack size
+		ThreadX::ThreadStaticEntryPoint,// entry-point-function
+		sender,           // arg list holding the "this" pointer
+		CREATE_SUSPENDED, // so we can later call ResumeThread()
+		&uiThread1ID);
+	ResumeThread(hth1);
 
-	printf("Caught an interrupt signal; exiting cleanly in two seconds.\n");
+	setvbuf(stdout, NULL, _IONBF, 0);
 
-	event_base_loopexit(base, &delay);
+	run();
+	return 0;
 }
