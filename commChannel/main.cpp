@@ -5,14 +5,14 @@
 #include <event2/event.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-
+#include <event2/thread.h>
 #include <assert.h>
 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include "commTool.cpp"
+#include "commTool.h"
 #define MAX_LINE 16384
 
 socketInfo socketQueue[2];
@@ -51,8 +51,6 @@ readcb(struct bufferevent *bev, void *ctx)
 		msg.oPort = (*p)[1].fd;
 		QueryPerformanceCounter((LARGE_INTEGER *)&msg.timestamp);
 		msg.msgLength = evbuffer_remove(input, msg.msgPtr, sizeof(msg.msgPtr));
-
-		printf("receive %d bytes\n", msg.msgLength);
 		msgQ.push(msg);
 		//std::cout << msgQ.length() << std::endl;
 		//if ((*p)[1].fd != INVALID_SOCKET) {
@@ -65,8 +63,6 @@ readcb(struct bufferevent *bev, void *ctx)
 		msg.oPort = (*p)[0].fd;
 		QueryPerformanceCounter((LARGE_INTEGER *)&msg.timestamp);
 		msg.msgLength = evbuffer_remove(input, msg.msgPtr, sizeof(msg.msgPtr));
-
-		printf("receive %d bytes\n", msg.msgLength);
 		msgQ.push(msg);
 		//send to 0 fd
 		//if ((*p)[0].fd != INVALID_SOCKET) {
@@ -184,14 +180,14 @@ run(void)
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);
 #endif
-
+	evthread_use_windows_threads();
 	base = event_base_new();
 	if (!base)
 		return; /*XXXerr*/
 
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = INADDR_ANY;
-	sin.sin_port = htons(40713);
+	sin.sin_port = htons(4242);
 
 	listener = socket(AF_INET, SOCK_STREAM, 0);
 	evutil_make_socket_nonblocking(listener);
@@ -225,8 +221,6 @@ main(int c, char **v)
 {
 	socketQueue[0].fd = INVALID_SOCKET;
 	socketQueue[1].fd = INVALID_SOCKET;
-
-	std::cout << "hesllo world" << std::endl;
 
 	Sender *sender = new Sender();
 	sender->Q = &msgQ;

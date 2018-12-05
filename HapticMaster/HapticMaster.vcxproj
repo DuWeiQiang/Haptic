@@ -168,12 +168,12 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="commTool.cpp" />
     <ClCompile Include="config.cpp" />
     <ClCompile Include="HapticCommLib.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="commTool.h" />
     <ClInclude Include="config.h" />
     <ClInclude Include="HapticCommLib.h" />
   </ItemGroup>

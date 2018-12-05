@@ -17,6 +17,10 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CHAI3D-BULLET", "external\chai3d-3.2.0\modules\BULLET\CHAI3D-BULLET-VS2015.vcxproj", "{89755822-86E3-4209-8C0E-C03B9BF95018}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticMaster", "HapticMaster\HapticMaster.vcxproj", "{78894AF6-8137-4445-9AFA-08342CC5E4B8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{89755822-86E3-4209-8C0E-C03B9BF95018} = {89755822-86E3-4209-8C0E-C03B9BF95018}
+		{A9F01342-5463-4634-B1F9-BF98CD5591B0} = {A9F01342-5463-4634-B1F9-BF98CD5591B0}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HapticMixture", "HapticMixture\HapticMixture.vcxproj", "{9023B105-E852-48BD-ADE7-3C81C7F3ED89}"
 	ProjectSection(ProjectDependencies) = postProject

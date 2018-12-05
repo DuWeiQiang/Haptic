@@ -40,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 \version   3.2.0 $Rev: 1869 $
 */
 //==============================================================================
-#include "commTool.cpp"
+#include "commTool.h"
 #include "config.h"
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
@@ -358,7 +358,8 @@ SOCKET sClient;
 SOCKET slisten;
 LARGE_INTEGER cpuFreq;
 double delay;// M2S delay
-
+Sender<hapticMessageS2M> *sender;
+threadsafe_queue<hapticMessageS2M> backwardQ;
 
 cBulletBox* bulletBox0, *bulletBox0_MMT;
 cBulletBox* bulletBox1, *bulletBox1_MMT;
@@ -505,7 +506,7 @@ inline int socketClientInit() {
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(40713);
+	serAddr.sin_port = htons(4242);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sClient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //¡¨Ω” ß∞‹ 
@@ -542,7 +543,7 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
-	std::cout << sizeof(DWORD) << "" << sizeof(hapticMessageS2M);
+	std::cout << sizeof(hapticMessageM2S) << " " << sizeof(hapticMessageS2M);
 	std::cout << std::endl;
 	std::cout << "-----------------------------------" << std::endl;
 	std::cout << "CHAI3D" << std::endl;
@@ -1109,6 +1110,16 @@ int main(int argc, char* argv[])
 	// setup callback when application exits
 	atexit(close);
 
+	sender = new Sender<hapticMessageS2M>();
+	sender->Q = &backwardQ;
+	sender->s = sClient;
+	unsigned  uiThread1ID;
+	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
+		0,             // stack size
+		ThreadX::ThreadStaticEntryPoint,// entry-point-function
+		sender,           // arg list holding the "this" pointer
+		0, // so we can later call ResumeThread()
+		&uiThread1ID);
 	//--------------------------------------------------------------------------
 	// MAIN GRAPHIC LOOP
 	//--------------------------------------------------------------------------
@@ -1417,7 +1428,7 @@ void updateHaptics(void)
 			//calculate M2S delay
 			__int64 curtime;
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);			
-			delay = ((double)(curtime - msgM2S.time) / (double)cpuFreq.QuadPart) * 1000;
+			delay = ((double)(curtime - msgM2S.timestamp) / (double)cpuFreq.QuadPart) * 1000;
 
 			// read position 
 			cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
@@ -1584,8 +1595,9 @@ void updateHaptics(void)
 			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
 			memcpy(msgS2M.waveVariable, ur, 3 * sizeof(double));
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-			msgS2M.time = curtime;
-			send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
+			msgS2M.timestamp = curtime;
+			//send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
+			backwardQ.push(msgS2M);
 			freqCounterHaptics.signal(1);
 		}
 		__int64 currentCounter;

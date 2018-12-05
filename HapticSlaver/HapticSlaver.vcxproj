@@ -164,7 +164,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="commTool.cpp" />
+    <ClCompile Include="commTool.h" />
     <ClCompile Include="config.cpp" />
     <ClCompile Include="HapticCommLib.cpp" />
     <ClCompile Include="main.cpp" />

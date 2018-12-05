@@ -1,4 +1,6 @@
 	state:
+		add delay control.
+
 		add position reset to fix position drift
 
 		add MMT algorithm.

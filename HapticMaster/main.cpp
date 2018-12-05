@@ -40,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 \version   3.2.0 $Rev: 1869 $
 */
 //==============================================================================
-#include "commTool.cpp"
+#include "commTool.h"
 #include "config.h"
 #include "HapticCommLib.h"
 //------------------------------------------------------------------------------
@@ -80,6 +80,9 @@ double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sa
 double MasterTorque[3] = { 0.0, 0.0, 0.0 };
 double MasterGripperForce = 0.0;
 AlgorithmType ATypeChange = AlgorithmType::AT_None;
+
+Sender<hapticMessageM2S> *sender;
+threadsafe_queue<hapticMessageM2S> forwardQ;
 
 class MMT_ALGORITHM {
 public:
@@ -531,6 +534,7 @@ int main(int argc, char* argv[])
 	// socket communication setup
 	//--------------------------------------------------------------------------
 	QueryPerformanceFrequency(&cpuFreq);
+	std::cout << cpuFreq.QuadPart << std::endl;
 	sockVersion = MAKEWORD(2, 2);
 
 	if (WSAStartup(sockVersion, &data) != 0)
@@ -556,7 +560,7 @@ int main(int argc, char* argv[])
 
 	sockaddr_in serAddr;
 	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(40713);
+	serAddr.sin_port = htons(4242);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sServer, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
 	{  //Á¬½ÓÊ§°Ü 
@@ -767,16 +771,7 @@ int main(int argc, char* argv[])
 	//120 is maxStiffness
 	ISS.mu_max = maxStiffness * ISS.stiff_factor;
 
-	//--------------------------------------------------------------------------
-	// START SIMULATION
-	//--------------------------------------------------------------------------
-
-	// create a thread which starts the main haptics rendering loop
-	hapticsThread = new cThread();
-	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
-
-	// setup callback when application exits
-	atexit(close);
+	
 
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
@@ -899,6 +894,28 @@ int main(int argc, char* argv[])
 	normalMap0->createMap(ground->m_texture);
 	ground->m_normalMap = normalMap0;
 	world->setEnabled(false, true);
+
+	//--------------------------------------------------------------------------
+	// create message sender used to control delay and send message
+	//--------------------------------------------------------------------------
+
+	// create a thread which starts the main haptics rendering loop
+	hapticsThread = new cThread();
+	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
+
+	// setup callback when application exits
+	atexit(close);
+	sender = new Sender<hapticMessageM2S>();
+	sender->Q = &forwardQ;
+	sender->s = sServer;
+	unsigned  uiThread1ID;
+	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
+		0,             // stack size
+		ThreadX::ThreadStaticEntryPoint,// entry-point-function
+		sender,           // arg list holding the "this" pointer
+		0, // so we can later call ResumeThread()
+		&uiThread1ID);
+	//ResumeThread(hth1);
 	//--------------------------------------------------------------------------
 	// MAIN GRAPHIC LOOP
 	//--------------------------------------------------------------------------
@@ -1076,9 +1093,7 @@ void close(void)
 	delete world;
 	delete handler;
 }
-
-
-
+ 
 //------------------------------------------------------------------------------
 
 
@@ -1219,7 +1234,7 @@ void updateHaptics(void)
 
 		__int64 curtime;
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-		msgM2S.time = curtime;
+		msgM2S.timestamp = curtime;
 		msgM2S.ATypeChange = ATypeChange;
 		ATypeChange = AlgorithmType::AT_KEEP;
 
@@ -1228,7 +1243,8 @@ void updateHaptics(void)
 		// push into send queues and prepare to send by sender thread.
 		/////////////////////////////////////////////////////////////////////
 		beginTime = curtime;
-		send(sServer, (char *)&msgM2S, sizeof(hapticMessageM2S), 0);
+		//send(sServer, (char *)&msgM2S, sizeof(hapticMessageM2S), 0);
+		forwardQ.push(msgM2S);
 		freqCounterHaptics.signal(1);
 
 #pragma endregion
@@ -1268,7 +1284,7 @@ void updateHaptics(void)
 			forceQ.pop();
 			
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
-			delay = ((double)(curtime - msgS2M.time) / (double)cpuFreq.QuadPart) * 1000;
+			delay = ((double)(curtime - msgS2M.timestamp) / (double)cpuFreq.QuadPart) * 1000;
 
 			//get force and energy from Slave2Master message
 			memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
