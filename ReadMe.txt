@@ -1,4 +1,6 @@
 	state:
+		add dynamic delay control
+
 		add send slave video back to master
 
 		add delay control.

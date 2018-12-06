@@ -13,6 +13,8 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_rng.h>
 enum AlgorithmType { AT_None, AT_TDPA, AT_ISS, AT_MMT, AT_KEEP };
 
 struct hapticMessageM2S {
@@ -167,8 +169,17 @@ template<typename T>
 class Sender :public ThreadX
 {
 public:
+	Sender() {
+		gsl_rng_env_setup();
+		const gsl_rng_type * T = gsl_rng_default;
+		r = gsl_rng_alloc (T);
+		gsl_rng_set(r, time(NULL));
+	};
 	threadsafe_queue<T> *Q;
 	__int64 lastTime;
+	gsl_rng *r;
+	double gamma_alpha = 20, gamma_beta = 1;
+	bool dynamicDelay = false;
 private:
 	void ThreadEntryPoint() {
 		printf("Sender Thread\n");
@@ -183,7 +194,7 @@ private:
 				continue;
 			
 			QueryPerformanceCounter((LARGE_INTEGER *)&currentTime);
-			if (currentTime - Q->front().timestamp < 3609 * 20)
+			if (currentTime - Q->front().timestamp < 3609 * (dynamicDelay ? (int)gsl_ran_gamma(r, gamma_alpha, gamma_beta): 20))
 				continue;
 
 			T temp;
@@ -196,7 +207,9 @@ private:
 			//std::this_thread::sleep_for(std::chrono::microseconds(500));
 		}
 	}
-	virtual ~Sender() {};
+	virtual ~Sender() {
+		gsl_rng_free(r);
+	};
 };
 
 template<typename T>

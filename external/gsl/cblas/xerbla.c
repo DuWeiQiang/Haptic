@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-#include <gsl/cblas/gsl_cblas.h>
+#include <gsl/gsl_cblas.h>
 #include "cblas.h"
 
 void

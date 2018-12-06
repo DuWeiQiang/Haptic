@@ -1269,6 +1269,11 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		mirroredDisplay = !mirroredDisplay;
 		camera->setMirrorVertical(mirroredDisplay);
 	}
+	else if (a_key == GLFW_KEY_D) {
+		std::cout << "Dynamic Delay :" << !sender->dynamicDelay << std::endl;
+
+		sender->dynamicDelay = !sender->dynamicDelay;
+	}
 }
 
 //------------------------------------------------------------------------------
