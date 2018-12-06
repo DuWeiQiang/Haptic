@@ -367,6 +367,7 @@ WORD sockVersion;
 WSADATA data;
 
 SOCKET sServer;
+SOCKET sServer_Image;
 LARGE_INTEGER cpuFreq;
 double delay = 0;
 std::queue<hapticMessageS2M> forceQ;
@@ -485,6 +486,53 @@ void updateHaptics(void);
 
 // this function closes the application
 void close(void);
+
+
+inline int socketClientInit(const char* addr, u_short remoteport, u_short myPort,SOCKET &sServer) {
+	//--------------------------------------------------------------------------
+	// socket communication setup
+	//--------------------------------------------------------------------------
+	QueryPerformanceFrequency(&cpuFreq);
+	std::cout << cpuFreq.QuadPart << std::endl;
+	sockVersion = MAKEWORD(2, 2);
+
+	if (WSAStartup(sockVersion, &data) != 0)
+	{
+		return 0;
+	}
+
+	sServer = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sServer == INVALID_SOCKET)
+	{
+		printf("invalid socket!");
+		return 0;
+	}
+	//绑定IP和端口  
+	sockaddr_in sin;
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(myPort);
+	sin.sin_addr.S_un.S_addr = INADDR_ANY;
+	if (bind(sServer, (LPSOCKADDR)&sin, sizeof(sin)) == SOCKET_ERROR)
+	{
+		printf("bind error !");
+	}
+
+	sockaddr_in serAddr;
+	serAddr.sin_family = AF_INET;
+	serAddr.sin_port = htons(remoteport);
+	serAddr.sin_addr.S_un.S_addr = inet_addr(addr);
+	if (connect(sServer, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
+	{  //连接失败 
+		printf("connect error !");
+		closesocket(sServer);
+		//return 0;
+	}
+	unsigned long on_windows = 1;
+	if (ioctlsocket(sServer, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
+}
+
 //==============================================================================
 /*
 DEMO:   01-mydevice.cpp
@@ -502,7 +550,7 @@ orientation and user switch status are read at each haptic cycle.
 Force and torque vectors are computed and sent back to the haptic device.
 */
 //==============================================================================
-
+cBitmap* bitmap;
 int main(int argc, char* argv[])
 {
 	//--------------------------------------------------------------------------
@@ -530,49 +578,8 @@ int main(int argc, char* argv[])
 	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 
 
-	//--------------------------------------------------------------------------
-	// socket communication setup
-	//--------------------------------------------------------------------------
-	QueryPerformanceFrequency(&cpuFreq);
-	std::cout << cpuFreq.QuadPart << std::endl;
-	sockVersion = MAKEWORD(2, 2);
-
-	if (WSAStartup(sockVersion, &data) != 0)
-	{
-		return 0;
-	}
-
-	sServer = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sServer == INVALID_SOCKET)
-	{
-		printf("invalid socket!");
-		return 0;
-	}
-	//绑定IP和端口  
-	sockaddr_in sin;
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(8887);
-	sin.sin_addr.S_un.S_addr = INADDR_ANY;
-	if (bind(sServer, (LPSOCKADDR)&sin, sizeof(sin)) == SOCKET_ERROR)
-	{
-		printf("bind error !");
-	}
-
-	sockaddr_in serAddr;
-	serAddr.sin_family = AF_INET;
-	serAddr.sin_port = htons(4242);
-	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
-	if (connect(sServer, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
-	{  //连接失败 
-		printf("connect error !");
-		closesocket(sServer);
-		//return 0;
-	}
-	unsigned long on_windows = 1;
-	if (ioctlsocket(sServer, FIONBIO, &on_windows) == SOCKET_ERROR) {
-		printf("non-block error");
-	}
-	
+	socketClientInit("127.0.0.1", 888, 887, sServer);
+	socketClientInit("127.0.0.1", 889, 886, sServer_Image);
 
 	//--------------------------------------------------------------------------
 	// OPENGL - WINDOW DISPLAY
@@ -763,10 +770,13 @@ int main(int argc, char* argv[])
 	tool->start();
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
-	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
+	double workspaceScaleFactor = tool->getWorkspaceScaleFactor();//tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
 	// hapticDeviceInfo.m_workspaceRadius----->0.04
 	// stiffness properties
-	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	// retrieve information about the current haptic device
+	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
+	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	std::cout << maxStiffness << std::endl;
 	world->setGravity(0.0, 0.0, -9.8);
 	//120 is maxStiffness
 	ISS.mu_max = maxStiffness * ISS.stiff_factor;
@@ -894,6 +904,9 @@ int main(int argc, char* argv[])
 	normalMap0->createMap(ground->m_texture);
 	ground->m_normalMap = normalMap0;
 	world->setEnabled(false, true);
+
+	bitmap = new cBitmap();
+	camera->m_frontLayer->addChild(bitmap);
 
 	//--------------------------------------------------------------------------
 	// create message sender used to control delay and send message
@@ -1419,9 +1432,17 @@ void updateGraphics(void)
 	// update shadow maps (if any)
 	world->updateShadowMaps(false, mirroredDisplay);
 
+	char *ImgTemp = new char[864 * 270 *8];
+	int ret = recv(sServer_Image, ImgTemp, 864 * 270 * 8, 0);
+	cImagePtr ImgPtr = cImage::create();
+	//ImgPtr->allocate(864, 270, GL_RGBA);
+	//ImgPtr->setSize();
+	ImgPtr->setData((unsigned char*)ImgTemp, ret, true);
+	ImgPtr->setProperties(864, 270, GL_RGBA, GL_UNSIGNED_BYTE);
+	bitmap->loadFromImage(ImgPtr);
 	// render world
 	camera->renderView(width, height);
-
+	ImgPtr->erase();
 	// wait until all OpenGL commands are completed
 	glFinish();
 

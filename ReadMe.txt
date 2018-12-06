@@ -1,4 +1,6 @@
 	state:
+		add send slave video back to master
+
 		add delay control.
 
 		add position reset to fix position drift

@@ -355,7 +355,8 @@ WORD sockVersion;
 WSADATA wsaData;
 std::queue<hapticMessageM2S> commandQ;
 SOCKET sClient;
-SOCKET slisten;
+SOCKET sClient_Image;
+
 LARGE_INTEGER cpuFreq;
 double delay;// M2S delay
 Sender<hapticMessageS2M> *sender;
@@ -418,7 +419,8 @@ void updateHaptics(void);
 // this function closes the application
 void close(void);
 
-inline int socketServerInit() {
+inline int socketServerInit(u_short listenPort, SOCKET &sClient) {
+	SOCKET slisten;
 	//--------------------------------------------------------------------------
 	// socket communication setup
 	//--------------------------------------------------------------------------
@@ -444,7 +446,7 @@ inline int socketServerInit() {
 	//°ó¶¨IPºÍ¶Ë¿Ú  
 	sockaddr_in sin;
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(8888);
+	sin.sin_port = htons(listenPort);
 	sin.sin_addr.S_un.S_addr = INADDR_ANY;
 	if (bind(slisten, (LPSOCKADDR)&sin, sizeof(sin)) == SOCKET_ERROR)
 	{
@@ -543,7 +545,7 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
-	std::cout << sizeof(hapticMessageM2S) << " " << sizeof(hapticMessageS2M);
+	//std::cout << sizeof(hapticMessageM2S) << " " << sizeof(hapticMessageS2M);
 	std::cout << std::endl;
 	std::cout << "-----------------------------------" << std::endl;
 	std::cout << "CHAI3D" << std::endl;
@@ -562,7 +564,8 @@ int main(int argc, char* argv[])
 	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
 
 
-	socketClientInit();
+	socketServerInit(888, sClient);
+	socketServerInit(889, sClient_Image);
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -704,6 +707,12 @@ int main(int argc, char* argv[])
 	// create a tool (cursor) and insert into the world
 	tool = new cToolCursor(world);
 	world->addChild(tool);
+	cGenericHapticDevicePtr hapticDevice = cGenericHapticDevice::create();
+	hapticDevice->m_specifications = Falcon;
+
+	// connect the haptic device to the tool
+	tool->setHapticDevice(hapticDevice);
+
 	// map the physical workspace of the haptic device to a larger virtual workspace.
 	tool->setWorkspaceRadius(1.3);
 
@@ -741,10 +750,13 @@ int main(int argc, char* argv[])
 
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
-	double workspaceScaleFactor = tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
+	double workspaceScaleFactor = tool->getWorkspaceScaleFactor();//tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
 	// hapticDeviceInfo.m_workspaceRadius----->0.04
 	// stiffness properties
-	double maxStiffness = Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	// retrieve information about the current haptic device
+	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
+	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
+	std::cout << maxStiffness << std::endl;
 	world->setGravity(0.0, 0.0, -9.8);
 
 	//////////////////////////////////////////////////////////////////////////
@@ -1176,6 +1188,7 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
 	// update frame buffer sizes
 	frameBuffer1->setSize(width, halfH);
 	frameBuffer2->setSize(width, halfH);
+	//std::cout << width << "hello" << halfH << std::endl;
 }
 
 //------------------------------------------------------------------------------
@@ -1698,10 +1711,12 @@ void updateGraphics(void)
 	// render all framebuffers
 	frameBuffer1->renderView();
 	frameBuffer2->renderView();
-
+	cImagePtr ImgPtr = cImage::create();
+	frameBuffer1->copyImageBuffer(ImgPtr);
+	send(sClient_Image, (const char *)ImgPtr->getData(), ImgPtr->getSizeInBytes(),0);
 	// render world
 	cameraMain->renderView(width, height);
-
+	ImgPtr->clear();
 	// wait until all OpenGL commands are completed
 	glFinish();
 

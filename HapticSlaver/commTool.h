@@ -183,7 +183,7 @@ private:
 				continue;
 
 			QueryPerformanceCounter((LARGE_INTEGER *)&currentTime);
-			if (currentTime - Q->front().timestamp < 3609 * 1)
+			if (currentTime - Q->front().timestamp < 3609 * 20)
 				continue;
 
 			T temp;
