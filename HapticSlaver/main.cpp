@@ -49,6 +49,7 @@ POSSIBILITY OF SUCH DAMAGE.
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>
+#include<fstream>
 //------------------------------------------------------------------------------
 using namespace chai3d;
 //------------------------------------------------------------------------------
@@ -72,6 +73,8 @@ double SlaveForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sa
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
 double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
+
+
 
 class MMT_ALGORITHM {
 public:
@@ -397,6 +400,74 @@ cHapticDeviceInfo Falcon = {
 	true,
 	true
 };
+
+class Game {
+public:
+	enum State { Stop, Running, episodeEnd };
+	State state = State::Stop;
+	unsigned int EpisodeIndex;
+	double score;
+	unsigned int slot;
+	std::ofstream OutFile;
+	std::string userName;
+	cVector3d initialPos;
+	Game() {
+		OutFile.open("Test.txt");
+		initialPos = cVector3d(0, 0, 0);
+	}
+
+	bool isEpisodeEnd() {
+		if(bulletBox0->getLocalPos().y() > 0.9)
+			return true;
+		return false;
+	};
+	// press key s to start.
+	void StartGame() {
+		state = State::Running;
+		EpisodeIndex++;
+		Reset();
+	};
+
+	void Reset() {		
+		score = 0;
+		slot = 0;
+		bulletBox0->setLocalPos(initialPos);
+	}
+	// press key x to stop and start a new user.
+	void StopGame() {
+		state = State::Stop;
+		userName = "hello";
+		EpisodeIndex = 0;
+		Reset();
+	};
+
+	void OutputScore() {
+		// one record = UTC TimeStamp + EpisodeIndex + Score
+		time_t now;
+		time(&now);
+		OutFile << userName << "," << now << "," << EpisodeIndex << "," << score << std::endl;
+	};
+
+	void EnvironmentUpdate() {
+		if (state == State::Stop)return;
+		cVector3d pos = bulletBox0->getLocalPos();
+		pos.y(1.5*sin(slot++*0.001));
+		bulletBox0->setLocalPos(pos);
+		ScoreUpdate();
+		if (isEpisodeEnd()) {
+			state = State::Stop;
+			OutputScore();
+		}
+	};
+
+	void ScoreUpdate() {
+		score += bulletBox0->getLocalPos().distance(bulletBox1->getLocalPos());
+	};
+
+	~Game() {
+		OutFile.close();
+	}
+}game;
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -563,7 +634,6 @@ int main(int argc, char* argv[])
 	// initialized deadband classes for force and velocity
 	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
 
-
 	socketServerInit(888, sClient);
 	socketServerInit(889, sClient_Image);
 	//--------------------------------------------------------------------------
@@ -583,7 +653,7 @@ int main(int argc, char* argv[])
 
 	// compute desired size of window
 	const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	int w = 0.8 * mode->height;
+	int w = 1920;
 	int h = 0.5 * mode->height;
 	int x = 0.5 * (mode->width - w);
 	int y = 0.5 * (mode->height - h);
@@ -591,7 +661,7 @@ int main(int argc, char* argv[])
 	// set OpenGL version
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	// set active stereo mode
 	if (stereoMode == C_STEREO_ACTIVE)
 	{
@@ -655,7 +725,7 @@ int main(int argc, char* argv[])
 	world->addChild(camera);
 
 	// position and orient the camera
-	camera->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
+	camera->set(cVector3d(2.5, 0.0, 3),    // camera position (eye)
 		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
 		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
@@ -682,7 +752,7 @@ int main(int argc, char* argv[])
 	light->setEnabled(true);
 
 	// position the light source
-	light->setLocalPos(0.0, 0.0, 2.2);
+	light->setLocalPos(0.0, 0.0, 5);
 
 	// define the direction of the light beam
 	light->setDir(0.0, 0.0, -1.0);
@@ -714,7 +784,7 @@ int main(int argc, char* argv[])
 	tool->setHapticDevice(hapticDevice);
 
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(1.3);
+	tool->setWorkspaceRadius(4);
 
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
@@ -824,8 +894,8 @@ int main(int argc, char* argv[])
 	// we create 5 static walls to contain the dynamic objects within a limited workspace
 	double planeWidth = 1.0;
 	bulletInvisibleWall1 = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
-	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -planeWidth);
-	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -planeWidth);
+	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -3*planeWidth);
+	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -3*planeWidth);
 	bulletInvisibleWall4 = new cBulletStaticPlane(world, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
 	bulletInvisibleWall5 = new cBulletStaticPlane(world, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
 
@@ -844,7 +914,7 @@ int main(int argc, char* argv[])
 	world->addChild(ground);
 
     // create a mesh plane where the static plane is located
-    cCreatePlane(ground, 3.0, 3.0, cVector3d(0,0,0));
+    cCreatePlane(ground, 3.0, 9.0, cVector3d(0,0,0));
 
     // define some material properties and apply to mesh
     cMaterial matGround;
@@ -1115,6 +1185,8 @@ int main(int argc, char* argv[])
 	// START SIMULATION
 	//--------------------------------------------------------------------------
 
+	game.StopGame();
+
 	// create a thread which starts the main haptics rendering loop
 	hapticsThread = new cThread();
 	hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
@@ -1269,10 +1341,20 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		mirroredDisplay = !mirroredDisplay;
 		camera->setMirrorVertical(mirroredDisplay);
 	}
-	else if (a_key == GLFW_KEY_D) {
+	if (a_key == GLFW_KEY_D) {
 		std::cout << "Dynamic Delay :" << !sender->dynamicDelay << std::endl;
 
 		sender->dynamicDelay = !sender->dynamicDelay;
+	}
+
+	if (a_key == GLFW_KEY_S) {
+		std::cout << "Game start" << std::endl;
+		game.StartGame();
+	}
+
+	if (a_key == GLFW_KEY_X) {
+		std::cout << "Game stop" << std::endl;
+		game.StopGame();
 	}
 }
 
@@ -1625,7 +1707,7 @@ void updateHaptics(void)
 		/////////////////////////////////////////////////////////////////////
 		// SIMULATION TIME    
 		/////////////////////////////////////////////////////////////////////
-
+		game.EnvironmentUpdate();
 		// stop the simulation clock
 		clock.stop();
 
