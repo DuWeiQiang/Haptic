@@ -598,7 +598,7 @@ int main(int argc, char* argv[])
 
 	// compute desired size of window
 	const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	int w = 1920;
+	int w = 0.8 * mode->height;
 	int h = 0.5 * mode->height;
 	int x = 0.5 * (mode->width - w);
 	int y = 0.5 * (mode->height - h);
@@ -671,7 +671,7 @@ int main(int argc, char* argv[])
 	world->addChild(camera);
 
 	// position and orient the camera
-	camera->set(cVector3d(2.5, 0.0, 6),    // camera position (eye)
+	camera->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
 		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
 		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
@@ -745,7 +745,7 @@ int main(int argc, char* argv[])
 	tool->setHapticDevice(hapticDevice);
 	
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(4);
+	tool->setWorkspaceRadius(1.3);
 
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
@@ -1437,13 +1437,13 @@ void updateGraphics(void)
 	// update shadow maps (if any)
 	world->updateShadowMaps(false, mirroredDisplay);
 
-	char *ImgTemp = new char[1920 * 270 *8];
-	int ret = recv(sServer_Image, ImgTemp, 1920 * 270 * 8, 0);
+	char *ImgTemp = new char[864 * 270 * 8];
+	int ret = recv(sServer_Image, ImgTemp, 864 * 270 * 8, 0);
 	cImagePtr ImgPtr = cImage::create();
 	//ImgPtr->allocate(864, 270, GL_RGBA);
 	//ImgPtr->setSize();
 	ImgPtr->setData((unsigned char*)ImgTemp, ret, true);
-	ImgPtr->setProperties(1920, 270, GL_RGBA, GL_UNSIGNED_BYTE);
+	ImgPtr->setProperties(864, 270, GL_RGBA, GL_UNSIGNED_BYTE);
 	bitmap->loadFromImage(ImgPtr);
 	// render world
 	camera->renderView(width, height);

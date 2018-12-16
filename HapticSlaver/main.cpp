@@ -653,7 +653,7 @@ int main(int argc, char* argv[])
 
 	// compute desired size of window
 	const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	int w = 1920;
+	int w = 0.8 * mode->height;
 	int h = 0.5 * mode->height;
 	int x = 0.5 * (mode->width - w);
 	int y = 0.5 * (mode->height - h);
@@ -725,7 +725,7 @@ int main(int argc, char* argv[])
 	world->addChild(camera);
 
 	// position and orient the camera
-	camera->set(cVector3d(2.5, 0.0, 3),    // camera position (eye)
+	camera->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
 		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
 		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
@@ -752,7 +752,7 @@ int main(int argc, char* argv[])
 	light->setEnabled(true);
 
 	// position the light source
-	light->setLocalPos(0.0, 0.0, 5);
+	light->setLocalPos(0.0, 0.0, 2.2);
 
 	// define the direction of the light beam
 	light->setDir(0.0, 0.0, -1.0);
@@ -784,7 +784,7 @@ int main(int argc, char* argv[])
 	tool->setHapticDevice(hapticDevice);
 
 	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool->setWorkspaceRadius(4);
+	tool->setWorkspaceRadius(1.3);
 
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
@@ -894,8 +894,8 @@ int main(int argc, char* argv[])
 	// we create 5 static walls to contain the dynamic objects within a limited workspace
 	double planeWidth = 1.0;
 	bulletInvisibleWall1 = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
-	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -3*planeWidth);
-	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -3*planeWidth);
+	bulletInvisibleWall2 = new cBulletStaticPlane(world, cVector3d(0.0, -1.0, 0.0), -planeWidth);
+	bulletInvisibleWall3 = new cBulletStaticPlane(world, cVector3d(0.0, 1.0, 0.0), -planeWidth);
 	bulletInvisibleWall4 = new cBulletStaticPlane(world, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
 	bulletInvisibleWall5 = new cBulletStaticPlane(world, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
 
@@ -914,7 +914,7 @@ int main(int argc, char* argv[])
 	world->addChild(ground);
 
     // create a mesh plane where the static plane is located
-    cCreatePlane(ground, 3.0, 9.0, cVector3d(0,0,0));
+    cCreatePlane(ground, 3.0, 3.0, cVector3d(0,0,0));
 
     // define some material properties and apply to mesh
     cMaterial matGround;
