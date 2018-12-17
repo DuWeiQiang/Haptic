@@ -162,9 +162,9 @@ public:
 class WAVE_ALGORITHM {
 public:
 	double b = 2.1;	//damping factor
-	bool waveOn = true;
+	bool waveOn = false;
 	double scaleFactor = 1;
-	KalmanFilter KF;
+	KalmanFilter *KF = new KalmanFilter();
 	// WAVE algorithm variables
 	struct WaveV
 	{
@@ -201,10 +201,10 @@ public:
 		if (waveOn) {
 			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
 			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
-			KF.ApplyKalmanFilter(ttemp);
-			WV.ul.x(KF.CurrentEstimation[0]);
-			WV.ul.y(KF.CurrentEstimation[1]);
-			WV.ul.z(KF.CurrentEstimation[2]);
+			KF->ApplyKalmanFilter(ttemp);
+			WV.ul.x(KF->CurrentEstimation[0]);
+			WV.ul.y(KF->CurrentEstimation[1]);
+			WV.ul.z(KF->CurrentEstimation[2]);
 		}
 	}
 
@@ -221,6 +221,12 @@ public:
 	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
 	{
 		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
+	}
+
+	void Initialize() {
+		WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
+		delete KF;
+		KF = new KalmanFilter();
 	}
 }WAVE;
 
@@ -1120,6 +1126,17 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		TDPA.TDPAon = false;
 		ISS.ISS_enabled = false;
 	}
+	else if (a_key == GLFW_KEY_W) {
+		std::cout << "WAVE enabled" << std::endl;
+		WAVE.waveOn = true;
+		WAVE.Initialize();
+		ATypeChange = AlgorithmType::AT_WAVE;
+
+		MMT.enable = false;
+		world->setEnabled(false, true);		
+		TDPA.TDPAon = false;
+		ISS.ISS_enabled = false;
+	}
 	else if (a_key == GLFW_KEY_D) {
 		std::cout << "Dynamic Delay :"<< !sender->dynamicDelay << std::endl;
 
@@ -1227,13 +1244,13 @@ void updateHaptics(void)
 
 		
 
-		//if (FlagVelocityKalmanFilter == 1) {
-		//	// Apply Kalman filtering to remove the noise on velocity signal
-		//	VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
-		//	MasterVelocity[0] = VelocityKalmanFilter.CurrentEstimation[0];
-		//	MasterVelocity[1] = VelocityKalmanFilter.CurrentEstimation[1];
-		//	MasterVelocity[2] = VelocityKalmanFilter.CurrentEstimation[2];
-		//}
+		if (FlagVelocityKalmanFilter == 1) {
+			// Apply Kalman filtering to remove the noise on velocity signal
+			VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
+			MasterVelocity[0] = VelocityKalmanFilter.CurrentEstimation[0];
+			MasterVelocity[1] = VelocityKalmanFilter.CurrentEstimation[1];
+			MasterVelocity[2] = VelocityKalmanFilter.CurrentEstimation[2];
+		}
 
 		// Apply deadband on position
 		DBPosition->GetCurrentSample(MasterPosition);
@@ -1243,8 +1260,8 @@ void updateHaptics(void)
 		}
 
 		// Apply deadband on velocity
-		/*DBVelocity->GetCurrentSample(MasterVelocity);
-		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);*/
+		DBVelocity->GetCurrentSample(MasterVelocity);
+		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);
 
 
 		ISS.VelocityRevise(MasterVelocity);
@@ -1348,7 +1365,7 @@ void updateHaptics(void)
 			MMT.SlavePar.Flag = msgS2M.MMTParameters[6];
 			
 			double vl[3];
-			memcpy(vl, msgM2S.waveVariable, 3 * sizeof(double));
+			memcpy(vl, msgS2M.waveVariable, 3 * sizeof(double));
 			WAVE.WV.vl = cVector3d(vl[0], vl[1], vl[2]);
 
 			
@@ -1363,7 +1380,6 @@ void updateHaptics(void)
 			TDPA.ForceRevise(MasterVelocity, MasterForce);
 			ISS.ForceRevise(MasterForce);
 			WAVE.ForceRevise(MasterVelocity, &WAVE.WV, MasterForce);
-			std::cout << cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]) << std::endl;
 			
 			
 			

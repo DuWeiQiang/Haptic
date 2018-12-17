@@ -71,7 +71,7 @@ bool ForceTransmitFlag = false; // true: deadband triger false: keep last recent
 double SlaveForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
 
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
-double MasterPosition[3] = { 0.0, 0.0, 1 }; // update 3 DoF master position sample (holds the signal before deadband)
+double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
 
@@ -153,7 +153,7 @@ public:
 	double b = 2.1;	//damping factor
 	bool waveOn = true;
 	double scaleFactor = 1;
-	KalmanFilter KF;
+	KalmanFilter *KF = new KalmanFilter();
 	// WAVE algorithm variables
 	struct WaveV
 	{
@@ -190,10 +190,10 @@ public:
 		if (waveOn) {
 			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
 			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
-			KF.ApplyKalmanFilter(ttemp);
-			WV.ul.x(KF.CurrentEstimation[0]);
-			WV.ul.y(KF.CurrentEstimation[1]);
-			WV.ul.z(KF.CurrentEstimation[2]);
+			KF->ApplyKalmanFilter(ttemp);
+			WV.ul.x(KF->CurrentEstimation[0]);
+			WV.ul.y(KF->CurrentEstimation[1]);
+			WV.ul.z(KF->CurrentEstimation[2]);
 		}
 	}
 
@@ -210,6 +210,12 @@ public:
 	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
 	{
 		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
+	}
+
+	void Initialize() {
+		WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
+		delete KF;
+		KF = new KalmanFilter();
 	}
 }WAVE;
 
@@ -449,7 +455,7 @@ public:
 	cVector3d initialPos;
 	Game() {
 		OutFile.open("Test.txt");
-		initialPos = cVector3d(0, -1, 0);
+		initialPos = cVector3d(0, 0, 0);
 	}
 
 	bool isEpisodeEnd() {
@@ -1604,10 +1610,11 @@ void updateHaptics(void)
 
 			switch (msgM2S.ATypeChange) {
 			case AlgorithmType::AT_None:
-				ControlMode = 1;
+				ControlMode = 0;
 				TDPA.TDPAon = false;
 				MMT.enable = false;
 				world_MMT->setEnabled(false, true);
+				WAVE.waveOn = false;
 				break;
 			case AlgorithmType::AT_TDPA:
 				ControlMode = 1;
@@ -1629,6 +1636,14 @@ void updateHaptics(void)
 				MMT.Initialize();
 				world_MMT->setEnabled(true, true);
 				break;
+			case AlgorithmType::AT_WAVE:
+				ControlMode = 1;
+				TDPA.TDPAon = false;
+				MMT.enable = false;
+				world_MMT->setEnabled(false, true);
+				WAVE.waveOn = true;
+				WAVE.Initialize();
+				break;
 			case AlgorithmType::AT_KEEP:
 				break;
 			}
@@ -1641,12 +1656,12 @@ void updateHaptics(void)
 
 			if (ControlMode == 1) { // if velocity control mode is selected
 									// Compute tool position using delayed velocity signal
-				//if (fabs(MasterVelocity[0]) < 10 && fabs(MasterVelocity[1]) < 10 && fabs(MasterVelocity[2]) < 10) {
+				if (fabs(MasterVelocity[0]) < 10 && fabs(MasterVelocity[1]) < 10 && fabs(MasterVelocity[2]) < 10) {
 
 					MasterPosition[0] = MasterPosition[0] + 0.001*MasterVelocity[0];
 					MasterPosition[1] = MasterPosition[1] + 0.001*MasterVelocity[1];
 					MasterPosition[2] = MasterPosition[2] + 0.001*MasterVelocity[2];
-				//}
+				}
 			}
 			else {
 				memcpy(MasterPosition, msgM2S.position, 3 * sizeof(double));

@@ -15,7 +15,7 @@
 #include <condition_variable>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
-enum AlgorithmType { AT_None, AT_TDPA, AT_ISS, AT_MMT, AT_KEEP };
+enum AlgorithmType { AT_None, AT_TDPA, AT_ISS, AT_MMT, AT_WAVE, AT_KEEP };
 
 struct hapticMessageM2S {
 	__int64 timestamp;
@@ -194,7 +194,7 @@ private:
 				continue;
 			
 			QueryPerformanceCounter((LARGE_INTEGER *)&currentTime);
-			if (currentTime - Q->front().timestamp < 3609 * (dynamicDelay ? (int)gsl_ran_gamma(r, gamma_alpha, gamma_beta): 0))
+			if (currentTime - Q->front().timestamp < 3609 * (dynamicDelay ? (int)gsl_ran_gamma(r, gamma_alpha, gamma_beta): 20))
 				continue;
 
 			T temp;
