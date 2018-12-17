@@ -150,7 +150,8 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 2.1;	//damping factor
+	// b=1.2 for Touch
+	double b = 8;	//damping factor
 	bool waveOn = false;
 	double scaleFactor = 1;
 	KalmanFilter *KF = new KalmanFilter();
@@ -820,7 +821,7 @@ int main(int argc, char* argv[])
 	tool = new cToolCursor(world);
 	world->addChild(tool);
 	cGenericHapticDevicePtr hapticDevice = cGenericHapticDevice::create();
-	hapticDevice->m_specifications = Touch;
+	hapticDevice->m_specifications = Falcon;
 
 	// connect the haptic device to the tool
 	tool->setHapticDevice(hapticDevice);
@@ -950,7 +951,7 @@ int main(int argc, char* argv[])
     //////////////////////////////////////////////////////////////////////////
 
     // create ground plane
-	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), -0.5);
+	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), 0);
 
     // add plane to world as we will want to make it visibe
 	world->addChild(ground);

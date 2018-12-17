@@ -161,7 +161,8 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 2.1;	//damping factor
+	// b=1.2 for Touch
+	double b = 8;	//damping factor
 	bool waveOn = false;
 	double scaleFactor = 1;
 	KalmanFilter *KF = new KalmanFilter();
