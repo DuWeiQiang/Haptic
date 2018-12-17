@@ -597,19 +597,18 @@ int main(int argc, char* argv[])
 	//--------------------------------------------------------------------------
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
-	std::cout << sizeof(hapticMessageM2S) << "" << sizeof(hapticMessageS2M);
+	//std::cout << sizeof(hapticMessageM2S) << "" << sizeof(hapticMessageS2M);
 	std::cout << std::endl; 
 	std::cout << "-----------------------------------" << std::endl;
-	std::cout << "CHAI3D" << std::endl;
-	std::cout << "Demo: 01-mydevice" << std::endl;
-	std::cout << "Copyright 2003-2016" << std::endl;
+	std::cout << "Teleoperation" << std::endl;
 	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
 	std::cout << "Keyboard Options:" << std::endl << std::endl;
-	std::cout << "[1] - Enable/Disable potential field" << std::endl;
-	std::cout << "[2] - Enable/Disable damping" << std::endl;
-	std::cout << "[f] - Enable/Disable full screen mode" << std::endl;
-	std::cout << "[m] - Enable/Disable vertical mirroring" << std::endl;
-	std::cout << "[q] - Exit application" << std::endl;
+	std::cout << "[N] - Disable all algorithm" << std::endl;
+	std::cout << "[I] - Enable ISS algorithm" << std::endl;
+	std::cout << "[T] - Enable TDPA algorithm" << std::endl;
+	std::cout << "[M] - Enable MMT algorithm" << std::endl;
+	std::cout << "[W] - Enable WAVE algorithm" << std::endl;
+	std::cout << "[D] - Switch between dynamic delay and constant delay(20ms)" << std::endl;
 	std::cout << std::endl << std::endl;
 
 	
@@ -817,7 +816,7 @@ int main(int argc, char* argv[])
 	// retrieve information about the current haptic device
 	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
 	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-	std::cout << workspaceScaleFactor << " "<< hapticDeviceInfo.m_workspaceRadius << std::endl;
+	//std::cout << workspaceScaleFactor << " "<< hapticDeviceInfo.m_workspaceRadius << std::endl;	
 	world->setGravity(0.0, 0.0, -9.8);
 	//120 is maxStiffness
 	ISS.mu_max = maxStiffness * ISS.stiff_factor;

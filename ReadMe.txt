@@ -1,4 +1,6 @@
 	state:
+		add wave
+
 		add game control
 
 		add dynamic delay control
