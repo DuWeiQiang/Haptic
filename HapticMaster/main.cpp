@@ -161,12 +161,11 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 1.2;	//damping factor
+	double b = 2.1;	//damping factor
 	bool waveOn = true;
 	double scaleFactor = 1;
 	KalmanFilter KF;
 	// WAVE algorithm variables
-
 	struct WaveV
 	{
 
@@ -175,14 +174,16 @@ public:
 		cVector3d ur;	//sent signal TOP
 		cVector3d vr;	//received signal OP
 		cVector3d F;	//force at OP
-	}WV;
+	};
+
+	WaveV WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
 
 	void VelocityRevise(double* vel, WaveV* wave, double* force) {
 		if (waveOn) {
 			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
-			vel[0] = temp.x()*scaleFactor;
-			vel[1] = temp.y()*scaleFactor;
-			vel[2] = temp.z()*scaleFactor;
+			vel[0] = temp.x() * scaleFactor;
+			vel[1] = temp.y() * scaleFactor;
+			vel[2] = temp.z() * scaleFactor;
 		}
 	}
 
@@ -209,9 +210,7 @@ public:
 
 	void getWave_r(double b, WaveV* wave, cVector3d f)
 	{
-		if (waveOn) {
-			wave->ur = (sqrt(2 / b)*f - wave->vr);
-		}
+		wave->ur = (sqrt(2 / b)*f - wave->vr);
 	}
 
 	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
@@ -221,7 +220,7 @@ public:
 
 	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
 	{
-		return 1 * b*vel + sqrt(2 * b)*wave->vl;
+		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
 	}
 }WAVE;
 
@@ -1228,13 +1227,13 @@ void updateHaptics(void)
 
 		
 
-		if (FlagVelocityKalmanFilter == 1) {
-			// Apply Kalman filtering to remove the noise on velocity signal
-			VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
-			MasterVelocity[0] = VelocityKalmanFilter.CurrentEstimation[0];
-			MasterVelocity[1] = VelocityKalmanFilter.CurrentEstimation[1];
-			MasterVelocity[2] = VelocityKalmanFilter.CurrentEstimation[2];
-		}
+		//if (FlagVelocityKalmanFilter == 1) {
+		//	// Apply Kalman filtering to remove the noise on velocity signal
+		//	VelocityKalmanFilter.ApplyKalmanFilter(MasterVelocity);
+		//	MasterVelocity[0] = VelocityKalmanFilter.CurrentEstimation[0];
+		//	MasterVelocity[1] = VelocityKalmanFilter.CurrentEstimation[1];
+		//	MasterVelocity[2] = VelocityKalmanFilter.CurrentEstimation[2];
+		//}
 
 		// Apply deadband on position
 		DBPosition->GetCurrentSample(MasterPosition);
@@ -1364,7 +1363,7 @@ void updateHaptics(void)
 			TDPA.ForceRevise(MasterVelocity, MasterForce);
 			ISS.ForceRevise(MasterForce);
 			WAVE.ForceRevise(MasterVelocity, &WAVE.WV, MasterForce);
-
+			std::cout << cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]) << std::endl;
 			
 			
 			
@@ -1382,7 +1381,7 @@ void updateHaptics(void)
 		cHapticPoint* p = tool->getHapticPoint(0);
 		MMT.ForceRevise(MasterForce, p->getLocalPosGoal(), p->getLocalPosProxy());
 
-		cVector3d force=cVector3d(MasterForce[0] - MasterVelocity[0] * 0.15, MasterForce[1] - MasterVelocity[1] * 0.15, MasterForce[2] - MasterVelocity[2] * 0.15);
+		cVector3d force=cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]);
 		cVector3d torque=cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]);
 		double gripperForce = MasterGripperForce;
 		tool->setDeviceLocalForce(force);

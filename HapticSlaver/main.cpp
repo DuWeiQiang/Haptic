@@ -150,12 +150,11 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 1.2;	//damping factor
+	double b = 2.1;	//damping factor
 	bool waveOn = true;
 	double scaleFactor = 1;
 	KalmanFilter KF;
 	// WAVE algorithm variables
-
 	struct WaveV
 	{
 
@@ -164,14 +163,16 @@ public:
 		cVector3d ur;	//sent signal TOP
 		cVector3d vr;	//received signal OP
 		cVector3d F;	//force at OP
-	}WV;
+	};
+
+	WaveV WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
 
 	void VelocityRevise(double* vel, WaveV* wave, double* force) {
 		if (waveOn) {
 			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
-			vel[0] = temp.x()*scaleFactor;
-			vel[1] = temp.y()*scaleFactor;
-			vel[2] = temp.z()*scaleFactor;
+			vel[0] = temp.x() * scaleFactor;
+			vel[1] = temp.y() * scaleFactor;
+			vel[2] = temp.z() * scaleFactor;
 		}
 	}
 
@@ -198,9 +199,7 @@ public:
 
 	void getWave_r(double b, WaveV* wave, cVector3d f)
 	{
-		if (waveOn) {
-			wave->ur = (sqrt(2 / b)*f - wave->vr);
-		}
+		wave->ur = (sqrt(2 / b)*f - wave->vr);
 	}
 
 	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
@@ -210,7 +209,7 @@ public:
 
 	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
 	{
-		return 1 * b*vel + sqrt(2 * b)*wave->vl;
+		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
 	}
 }WAVE;
 
@@ -450,7 +449,7 @@ public:
 	cVector3d initialPos;
 	Game() {
 		OutFile.open("Test.txt");
-		initialPos = cVector3d(0, 0, 0);
+		initialPos = cVector3d(0, -1, 0);
 	}
 
 	bool isEpisodeEnd() {
@@ -1642,12 +1641,12 @@ void updateHaptics(void)
 
 			if (ControlMode == 1) { // if velocity control mode is selected
 									// Compute tool position using delayed velocity signal
-				if (fabs(MasterVelocity[0]) < 10 && fabs(MasterVelocity[1]) < 10 && fabs(MasterVelocity[2]) < 10) {
+				//if (fabs(MasterVelocity[0]) < 10 && fabs(MasterVelocity[1]) < 10 && fabs(MasterVelocity[2]) < 10) {
 
 					MasterPosition[0] = MasterPosition[0] + 0.001*MasterVelocity[0];
 					MasterPosition[1] = MasterPosition[1] + 0.001*MasterVelocity[1];
 					MasterPosition[2] = MasterPosition[2] + 0.001*MasterVelocity[2];
-				}
+				//}
 			}
 			else {
 				memcpy(MasterPosition, msgM2S.position, 3 * sizeof(double));
@@ -1703,9 +1702,9 @@ void updateHaptics(void)
 			DBForce->GetCurrentSample(MasterForce); // pass the current sample for DB data reduction
 			DBForce->ApplyZOHDeadband(MasterForce, &ForceTransmitFlag); // apply DB data reduction
 
-			SlaveForce[0] = -1 * MasterForce[0];
-			SlaveForce[1] = -1 * MasterForce[1];
-			SlaveForce[2] = -1 * MasterForce[2];
+			SlaveForce[0] = -1 * force.x();
+			SlaveForce[1] = -1 * force.y();
+			SlaveForce[2] = -1 * force.z();
 			
 			if (ForceTransmitFlag == true) {
 				memcpy(TDPA.E_trans, TDPA.E_in, 3 * sizeof(double));
@@ -1818,7 +1817,7 @@ void updateGraphics(void)
 	// update haptic and graphic rate data
 	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
 		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "M2S delay:" + cStr(delay, 3) 
-		+ " " + cStr(MasterPosition[0], 3) + " " + cStr(MasterPosition[1], 3) + " " + cStr(MasterPosition[2], 3));
+		+ " " + cStr(MasterVelocity[0], 3) + " " + cStr(MasterVelocity[1], 3) + " " + cStr(MasterVelocity[2], 3));
 
 	// update position of label
 	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
