@@ -662,16 +662,14 @@ int main(int argc, char* argv[])
 	//std::cout << sizeof(hapticMessageM2S) << " " << sizeof(hapticMessageS2M);
 	std::cout << std::endl;
 	std::cout << "-----------------------------------" << std::endl;
-	std::cout << "CHAI3D" << std::endl;
-	std::cout << "Demo: 03-analytics" << std::endl;
-	std::cout << "Copyright 2003-2016" << std::endl;
+	std::cout << "Teleoperation" << std::endl;
 	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
 	std::cout << "Keyboard Options:" << std::endl << std::endl;
-	std::cout << "[1] - Enable/Disable potential field" << std::endl;
-	std::cout << "[2] - Enable/Disable damping" << std::endl;
-	std::cout << "[f] - Enable/Disable full screen mode" << std::endl;
-	std::cout << "[m] - Enable/Disable vertical mirroring" << std::endl;
-	std::cout << "[q] - Exit application" << std::endl;
+	std::cout << "[X] - Stop Game" << std::endl;
+	std::cout << "[S] - Start a new episode" << std::endl;
+	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
+	std::cout << "Game score will store in a TXT document." << std::endl << std::endl << std::endl;
+	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
 	std::cout << std::endl << std::endl;
 
 	// initialized deadband classes for force and velocity
