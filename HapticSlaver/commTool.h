@@ -193,7 +193,7 @@ private:
 				continue;
 
 			QueryPerformanceCounter((LARGE_INTEGER *)&currentTime);
-			if (currentTime - Q->front().timestamp < 3609 * (dynamicDelay ? (int)gsl_ran_gamma(r, gamma_alpha, gamma_beta) : 20))
+			if (currentTime - Q->front().timestamp < 3609 * (dynamicDelay ? (int)gsl_ran_gamma(r, gamma_alpha, gamma_beta) : 0))
 				continue;
 
 			T temp;

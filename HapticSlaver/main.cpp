@@ -71,7 +71,7 @@ bool ForceTransmitFlag = false; // true: deadband triger false: keep last recent
 double SlaveForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
 
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
-double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sample (holds the signal before deadband)
+double MasterPosition[3] = { 0.0, 0.0, 1 }; // update 3 DoF master position sample (holds the signal before deadband)
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
 
@@ -150,12 +150,15 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 3;	//damping factor
-	bool waveOn = false;
+	double b = 1.2;	//damping factor
+	bool waveOn = true;
+	double scaleFactor = 1;
+	KalmanFilter KF;
 	// WAVE algorithm variables
+
 	struct WaveV
 	{
-		
+
 		cVector3d ul;	//sent signal OP
 		cVector3d vl;	//received signal OP
 		cVector3d ur;	//sent signal TOP
@@ -163,37 +166,46 @@ public:
 		cVector3d F;	//force at OP
 	}WV;
 
-	void VelocityRevise(double* vel,WaveV* wave, double* force) {
-		if(waveOn) {
-			cVector3d temp = getVel_r(b, wave, cVector3d(force[0],force[1],force[2]));
-			vel[0] = temp.x();
-			vel[0] = temp.y();
-			vel[0] = temp.z();
-		}		
+	void VelocityRevise(double* vel, WaveV* wave, double* force) {
+		if (waveOn) {
+			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
+			vel[0] = temp.x()*scaleFactor;
+			vel[1] = temp.y()*scaleFactor;
+			vel[2] = temp.z()*scaleFactor;
+		}
 	}
 
 	void ForceRevise(double* vel, WaveV* wave, double* force) {
 		if (waveOn) {
-			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]));
-			force[0] = temp.x();
-			force[0] = temp.y();
-			force[0] = temp.z();
+			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]) / scaleFactor);
+			force[0] = -1 * temp.x();
+			force[1] = -1 * temp.y();
+			force[2] = -1 * temp.z();
 		}
 	}
 
 	void getWave_l(double b, WaveV* wave, cVector3d vel)
 	{
-		wave->ul = sqrt(2 * b)*vel + wave->vl;
+		if (waveOn) {
+			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
+			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
+			KF.ApplyKalmanFilter(ttemp);
+			WV.ul.x(KF.CurrentEstimation[0]);
+			WV.ul.y(KF.CurrentEstimation[1]);
+			WV.ul.z(KF.CurrentEstimation[2]);
+		}
 	}
 
 	void getWave_r(double b, WaveV* wave, cVector3d f)
 	{
-		wave->ur = (sqrt(2 / b)*f - wave->vr);
+		if (waveOn) {
+			wave->ur = (sqrt(2 / b)*f - wave->vr);
+		}
 	}
 
 	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
 	{
-		return 1 / b*(f - sqrt(2 * b)*wave->vr);
+		return -1 / b*(f - sqrt(2 * b)*wave->vr);
 	}
 
 	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
@@ -393,6 +405,31 @@ cHapticDeviceInfo Falcon = {
 	cDegToRad(0.0),
 	true,
 	false,
+	false,
+	true,
+	false,
+	false,
+	true,
+	true
+};
+
+cHapticDeviceInfo Touch = {
+	C_HAPTIC_DEVICE_PHANTOM_TOUCH,
+	"Touch",
+	"Sensable Technologies",
+	3.3,     // [N]
+	0.0,     // [N*m]
+	0.0,     // [N]
+	400.0,   // [N/m]
+	0.0,     // [N*m/Rad]
+	0.0,     // [N/m]
+	4.0,     // [N/(m/s)]
+	0.0,     // [N*m/(Rad/s)]
+	0.0,     // [N*m/(Rad/s)]
+	0.075,    // [m];
+	cDegToRad(0.0),
+	true,
+	true,
 	false,
 	true,
 	false,
@@ -778,7 +815,7 @@ int main(int argc, char* argv[])
 	tool = new cToolCursor(world);
 	world->addChild(tool);
 	cGenericHapticDevicePtr hapticDevice = cGenericHapticDevice::create();
-	hapticDevice->m_specifications = Falcon;
+	hapticDevice->m_specifications = Touch;
 
 	// connect the haptic device to the tool
 	tool->setHapticDevice(hapticDevice);
@@ -826,9 +863,9 @@ int main(int argc, char* argv[])
 	// retrieve information about the current haptic device
 	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
 	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-	std::cout << maxStiffness << std::endl;
+	std::cout << workspaceScaleFactor << std::endl;
 	world->setGravity(0.0, 0.0, -9.8);
-
+	WAVE.scaleFactor = workspaceScaleFactor;
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
 	//////////////////////////////////////////////////////////////////////////
@@ -908,7 +945,7 @@ int main(int argc, char* argv[])
     //////////////////////////////////////////////////////////////////////////
 
     // create ground plane
-	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), 0);
+	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), -0.5);
 
     // add plane to world as we will want to make it visibe
 	world->addChild(ground);
@@ -1376,7 +1413,6 @@ void close(void)
 //------------------------------------------------------------------------------
 
 
-
 //------------------------------------------------------------------------------
 void updateHaptics(void)
 {
@@ -1569,7 +1605,7 @@ void updateHaptics(void)
 
 			switch (msgM2S.ATypeChange) {
 			case AlgorithmType::AT_None:
-				ControlMode = 0;
+				ControlMode = 1;
 				TDPA.TDPAon = false;
 				MMT.enable = false;
 				world_MMT->setEnabled(false, true);
@@ -1602,7 +1638,7 @@ void updateHaptics(void)
 
 
 			TDPA.VelocityRevise(MasterVelocity, SlaveForce);
-			WAVE.VelocityRevise(MasterVelocity, &WAVE.WV, MasterForce);
+			WAVE.VelocityRevise(MasterVelocity, &WAVE.WV, SlaveForce);
 
 			if (ControlMode == 1) { // if velocity control mode is selected
 									// Compute tool position using delayed velocity signal
@@ -1644,7 +1680,7 @@ void updateHaptics(void)
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
-			WAVE.getWave_r(WAVE.b, &WAVE.WV, cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]));
+			WAVE.getWave_r(WAVE.b, &WAVE.WV, cVector3d(SlaveForce[0], SlaveForce[1], SlaveForce[2]));
 			
 			double ur[3] = { WAVE.WV.ur.x(), WAVE.WV.ur.y(), WAVE.WV.ur.z() };
 
@@ -1781,7 +1817,8 @@ void updateGraphics(void)
 
 	// update haptic and graphic rate data
 	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "M2S delay:" + cStr(delay, 3));
+		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "M2S delay:" + cStr(delay, 3) 
+		+ " " + cStr(MasterPosition[0], 3) + " " + cStr(MasterPosition[1], 3) + " " + cStr(MasterPosition[2], 3));
 
 	// update position of label
 	labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);

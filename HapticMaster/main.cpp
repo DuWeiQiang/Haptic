@@ -161,9 +161,12 @@ public:
 
 class WAVE_ALGORITHM {
 public:
-	double b = 3;	//damping factor
-	bool waveOn = false;
+	double b = 1.2;	//damping factor
+	bool waveOn = true;
+	double scaleFactor = 1;
+	KalmanFilter KF;
 	// WAVE algorithm variables
+
 	struct WaveV
 	{
 
@@ -177,29 +180,38 @@ public:
 	void VelocityRevise(double* vel, WaveV* wave, double* force) {
 		if (waveOn) {
 			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
-			vel[0] = temp.x();
-			vel[0] = temp.y();
-			vel[0] = temp.z();
+			vel[0] = temp.x()*scaleFactor;
+			vel[1] = temp.y()*scaleFactor;
+			vel[2] = temp.z()*scaleFactor;
 		}
 	}
 
 	void ForceRevise(double* vel, WaveV* wave, double* force) {
 		if (waveOn) {
-			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]));
-			force[0] = temp.x();
-			force[0] = temp.y();
-			force[0] = temp.z();
+			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]) / scaleFactor);
+			force[0] = -1 * temp.x();
+			force[1] = -1 * temp.y();
+			force[2] = -1 * temp.z();
 		}
 	}
 
 	void getWave_l(double b, WaveV* wave, cVector3d vel)
 	{
-		wave->ul = sqrt(2 * b)*vel + wave->vl;
+		if (waveOn) {
+			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
+			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
+			KF.ApplyKalmanFilter(ttemp);
+			WV.ul.x(KF.CurrentEstimation[0]);
+			WV.ul.y(KF.CurrentEstimation[1]);
+			WV.ul.z(KF.CurrentEstimation[2]);
+		}
 	}
 
 	void getWave_r(double b, WaveV* wave, cVector3d f)
 	{
-		wave->ur = (sqrt(2 / b)*f - wave->vr);
+		if (waveOn) {
+			wave->ur = (sqrt(2 / b)*f - wave->vr);
+		}
 	}
 
 	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
@@ -464,7 +476,30 @@ cHapticDeviceInfo Falcon = {
 	true,
 	true
 };
-
+cHapticDeviceInfo Touch = {
+	C_HAPTIC_DEVICE_PHANTOM_TOUCH,
+	"Touch",
+	"Sensable Technologies",
+	3.3,     // [N]
+	0.0,     // [N*m]
+	0.0,     // [N]
+	400.0,   // [N/m]
+	0.0,     // [N*m/Rad]
+	0.0,     // [N/m]
+	4.0,     // [N/(m/s)]
+	0.0,     // [N*m/(Rad/s)]
+	0.0,     // [N*m/(Rad/s)]
+	0.075,    // [m];
+	cDegToRad(0.0),
+	true,
+	true,
+	false,
+	true,
+	false,
+	false,
+	true,
+	true
+};
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -746,7 +781,7 @@ int main(int argc, char* argv[])
 	
 	// map the physical workspace of the haptic device to a larger virtual workspace.
 	tool->setWorkspaceRadius(1.3);
-
+	
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
 
@@ -776,11 +811,11 @@ int main(int argc, char* argv[])
 	// retrieve information about the current haptic device
 	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
 	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-	std::cout << maxStiffness << std::endl;
+	std::cout << workspaceScaleFactor << " "<< hapticDeviceInfo.m_workspaceRadius << std::endl;
 	world->setGravity(0.0, 0.0, -9.8);
 	//120 is maxStiffness
 	ISS.mu_max = maxStiffness * ISS.stiff_factor;
-
+	WAVE.scaleFactor = workspaceScaleFactor;
 	
 
 	//////////////////////////////////////////////////////////////////////////
@@ -1209,8 +1244,8 @@ void updateHaptics(void)
 		}
 
 		// Apply deadband on velocity
-		DBVelocity->GetCurrentSample(MasterVelocity);
-		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);
+		/*DBVelocity->GetCurrentSample(MasterVelocity);
+		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);*/
 
 
 		ISS.VelocityRevise(MasterVelocity);
