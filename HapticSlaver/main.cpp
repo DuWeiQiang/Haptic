@@ -151,7 +151,7 @@ public:
 class WAVE_ALGORITHM {
 public:
 	double b = 2.1;	//damping factor
-	bool waveOn = true;
+	bool waveOn = false;
 	double scaleFactor = 1;
 	KalmanFilter *KF = new KalmanFilter();
 	// WAVE algorithm variables
@@ -1622,12 +1622,14 @@ void updateHaptics(void)
 				TDPA.Initialize();
 				MMT.enable = false;
 				world_MMT->setEnabled(false, true);
+				WAVE.waveOn = false;
 				break;
 			case AlgorithmType::AT_ISS:
 				ControlMode = 1;
 				TDPA.TDPAon = false;
 				MMT.enable = false;
 				world_MMT->setEnabled(false, true);
+				WAVE.waveOn = false;
 				break;
 			case AlgorithmType::AT_MMT:
 				ControlMode = 0;
@@ -1635,6 +1637,7 @@ void updateHaptics(void)
 				MMT.enable = true;
 				MMT.Initialize();
 				world_MMT->setEnabled(true, true);
+				WAVE.waveOn = false;
 				break;
 			case AlgorithmType::AT_WAVE:
 				ControlMode = 1;
