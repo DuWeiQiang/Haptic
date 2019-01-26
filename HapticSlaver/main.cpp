@@ -60,14 +60,15 @@ ConfigFile cfg("cfg/config.cfg"); // get the configuration file
 double ForceDeadbandParameter = cfg.getValueOfKey<double>("ForceDeadbandParameter"); //deadband parameter for force data reduction, 0.1 is the default value
 
 int ControlMode = cfg.getValueOfKey<int>("ControlMode"); // 0: position control, 1:velocity control
-
+std::string IP_master = cfg.getValueOfKey<std::string>("MasterIP");
+std::string IP_slave = cfg.getValueOfKey<std::string>("SlaveIP");
 DeadbandDataReduction* DBForce; // data reduction class for force samples
 bool ForceTransmitFlag = false; // true: deadband triger false: keep last recently transmitted sample (ZoH)
 
-//------------------------------------------------------------------------------
-// TDPA variable and function realted code
-//------------------------------------------------------------------------------
-//----------TDPA---------------------
+								//------------------------------------------------------------------------------
+								// TDPA variable and function realted code
+								//------------------------------------------------------------------------------
+								//----------TDPA---------------------
 double SlaveForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF slave control force sample
 
 double MasterVelocity[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master velocity sample (holds the signal before deadband)
@@ -75,232 +76,18 @@ double MasterPosition[3] = { 0.0, 0.0, 0.0 }; // update 3 DoF master position sa
 double MasterForce[3] = { 0.0,0.0,0.0 };  // current 3 DoF force sample
 
 
-
-class MMT_ALGORITHM {
-public:
-	bool enable = false;
-	/*
-	enviroment variable:
-	1. box position;
-	3. K used to calculate the force
-	*/
-	static struct envPar
-	{
-		cVector3d parPosition;
-		cVector3d parStiffness;
-		bool Flag;//whether this parameters is used to update the master's enviroment
-	};
-	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-	cVector3d oldStiffness;
-	int length = 100;
-	int index = 0;
-	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
-
-	void ForceRevise(cVector3d &force, cVector3d goalPos, cVector3d proxyPos) {
-		if (!enable)return;
-		force = MasterPar.parStiffness;
-		force.mulElement(proxyPos - goalPos);
-	}
-
-	void Initialize() {
-		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-		index = 0;
-		oldStiffness = cVector3d(0, 0, 0);
-		for (int i = 0; i < 100; i++) {
-			parStiffness[i] = cVector3d(0, 0, 0);
-		}
-	}
-
-	cVector3d Average(cVector3d temp) {
-		if (index < 100) {
-			parStiffness[index] = temp;
-			index += 1;
-		}
-		else {
-			parStiffness[index % 100] = temp;
-			index = index % 100;
-		}
-		cVector3d avg;
-		for (int i = 0; i < 100; i++) {
-			avg += parStiffness[i];
-		}
-		avg /= 100;
-		return avg;
-	}
-
-	bool isTransmit() {
-		for (int i = 0; i < 3; i++) {
-			// The threshold of  change rate is 10 percentage
-			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
-				return true;
-			// The threshold of  position offset is 0.1 meters
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
-				return true;
-		}
-		return false;
-	}
-
-	/*
-	dead band parameter
-	*/
-	double db;
-}MMT;
-
-class WAVE_ALGORITHM {
-public:
-	// b=1.2 for Touch
-	double b = 8;	//damping factor
-	bool waveOn = false;
-	double scaleFactor = 1;
-	KalmanFilter *KF = new KalmanFilter();
-	// WAVE algorithm variables
-	struct WaveV
-	{
-
-		cVector3d ul;	//sent signal OP
-		cVector3d vl;	//received signal OP
-		cVector3d ur;	//sent signal TOP
-		cVector3d vr;	//received signal OP
-		cVector3d F;	//force at OP
-	};
-
-	WaveV WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
-
-	void VelocityRevise(double* vel, WaveV* wave, double* force) {
-		if (waveOn) {
-			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
-			vel[0] = temp.x() * scaleFactor;
-			vel[1] = temp.y() * scaleFactor;
-			vel[2] = temp.z() * scaleFactor;
-		}
-	}
-
-	void ForceRevise(double* vel, WaveV* wave, double* force) {
-		if (waveOn) {
-			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]) / scaleFactor);
-			force[0] = -1 * temp.x();
-			force[1] = -1 * temp.y();
-			force[2] = -1 * temp.z();
-		}
-	}
-
-	void getWave_l(double b, WaveV* wave, cVector3d vel)
-	{
-		if (waveOn) {
-			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
-			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
-			KF->ApplyKalmanFilter(ttemp);
-			WV.ul.x(KF->CurrentEstimation[0]);
-			WV.ul.y(KF->CurrentEstimation[1]);
-			WV.ul.z(KF->CurrentEstimation[2]);
-		}
-	}
-
-	void getWave_r(double b, WaveV* wave, cVector3d f)
-	{
-		wave->ur = (sqrt(2 / b)*f - wave->vr);
-	}
-
-	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
-	{
-		return -1 / b*(f - sqrt(2 * b)*wave->vr);
-	}
-
-	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
-	{
-		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
-	}
-
-	void Initialize() {
-		WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
-		delete KF;
-		KF = new KalmanFilter();
-	}
-}WAVE;
-
-class TDPA_Algorithm {
-public:
-	double sample_interval = 0.001;   //1kHz
-	double E_in[3] = { 0,0,0 }, E_out[3] = { 0,0,0 };
-	double E_in_last[3] = { 0,0,0 };
-	double E_trans[3] = { 0,0,0 }, E_recv[3] = { 0,0,0 };
-	double alpha[3] = { 0,0,0 }, beta[3] = { 0,0,0 };
-	bool TDPAon = false;
-	void ComputeEnergy(double vel[3], double force[3])
-	{
-		for (int i = 0; i < 3; i++) {
-			// only for z direction
-			double power = vel[i] * (-1 * force[i]);
-			if (power >= 0) {
-				E_in[i] = E_in[i] + sample_interval*power;
-			}
-			else {
-				E_out[i] = E_out[i] - sample_interval*power;
-			}
-		}
-
-	};
-	// only used by master
-	void ForceRevise(double* Vel, double* force) {
-		ComputeEnergy(Vel, force);
-		for (int i = 0; i < 3; i++) {
-			if (E_out[i] > E_recv[i] && abs(Vel[i]) > 0.001)
-			{
-				alpha[i] = (E_out[i] - E_recv[i]) / (sample_interval*Vel[i] * Vel[i]);
-				E_out[i] = E_recv[i];
-			}
-			else
-				alpha[i] = 0;
-
-			// 3. revise force and apply the revised force
-			if (TDPAon)
-				force[i] = force[i] - alpha[i] * Vel[i];
-		}
-	};
-	// only used by slavor
-	void VelocityRevise(double* Vel, double* force) {
-		ComputeEnergy(Vel, force);
-		for (int i = 0; i < 3; i++) {
-			if (E_out[i] > E_recv[i] && abs(force[i]) > 0.001)
-			{
-				beta[i] = (E_out[i] - E_recv[i]) / (sample_interval*force[i] * force[i]);
-				E_out[i] = E_recv[i];
-			}
-			else
-				beta[i] = 0;
-
-			// 3. revise slave vel 
-			if (TDPAon)
-				Vel[i] = Vel[i] - beta[i] * force[i];
-		}
-	};
-
-	void Initialize()
-	{
-		memset(E_in, 0, 3 * sizeof(double));
-		memset(E_out, 0, 3 * sizeof(double));
-		memset(E_in_last, 0, 3 * sizeof(double));
-		memset(E_trans, 0, 3 * sizeof(double));
-		memset(E_recv, 0, 3 * sizeof(double));
-		memset(alpha, 0, 3 * sizeof(double));
-		memset(beta, 0, 3 * sizeof(double));
-	};
-}TDPA;
-
 KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
-//------------------------------------------------------------------------------
-// GENERAL SETTINGS
-//------------------------------------------------------------------------------
+								//------------------------------------------------------------------------------
+								// GENERAL SETTINGS
+								//------------------------------------------------------------------------------
 
-// stereo Mode
-/*
-C_STEREO_DISABLED:            Stereo is disabled
-C_STEREO_ACTIVE:              Active stereo for OpenGL NVDIA QUADRO cards
-C_STEREO_PASSIVE_LEFT_RIGHT:  Passive stereo where L/R images are rendered next to each other
-C_STEREO_PASSIVE_TOP_BOTTOM:  Passive stereo where L/R images are rendered above each other
-*/
+								// stereo Mode
+								/*
+								C_STEREO_DISABLED:            Stereo is disabled
+								C_STEREO_ACTIVE:              Active stereo for OpenGL NVDIA QUADRO cards
+								C_STEREO_PASSIVE_LEFT_RIGHT:  Passive stereo where L/R images are rendered next to each other
+								C_STEREO_PASSIVE_TOP_BOTTOM:  Passive stereo where L/R images are rendered above each other
+								*/
 cStereoMode stereoMode = C_STEREO_DISABLED;
 
 // fullscreen mode
@@ -314,10 +101,10 @@ bool mirroredDisplay = false;
 //------------------------------------------------------------------------------
 
 // a world that contains all objects of the virtual environment
-cBulletWorld* world,* world_MMT;
+cBulletWorld* world;
 
 // a camera to render the world in the window display
-cCamera* camera, *camera_MMT,* cameraMain;
+cCamera* camera, *cameraMain;
 
 // Four view panels
 cViewPanel* viewPanel1;
@@ -328,16 +115,16 @@ cFrameBufferPtr frameBuffer1;
 cFrameBufferPtr frameBuffer2;
 
 // a light source to illuminate the objects in the world
-cSpotLight *light,* light_MMT;
+cSpotLight *light;
 
 // a font for rendering text
-cFontPtr font, font_MMT;
+cFontPtr font;
 
 // a label to display the rate [Hz] at which the simulation is running
-cLabel* labelRates,* labelRates_MMT;
+cLabel* labelRates;
 
 // a virtual tool representing the haptic device in the scene
-cToolCursor* tool,* tool_MMT;
+cToolCursor* tool;
 
 // a flag for using damping (ON/OFF)
 bool useDamping = false;
@@ -352,7 +139,7 @@ bool simulationRunning = false;
 bool simulationFinished = true;
 
 // a frequency counter to measure the simulation graphic rate
-cFrequencyCounter freqCounterGraphics, freqCounterGraphics_MMT;
+cFrequencyCounter freqCounterGraphics;
 
 // a frequency counter to measure the simulation haptic rate
 cFrequencyCounter freqCounterHaptics;
@@ -376,23 +163,28 @@ WORD sockVersion;
 WSADATA wsaData;
 std::queue<hapticMessageM2S> commandQ;
 SOCKET sClient;
+sockaddr_in RecvAddr;
+sockaddr_in SendAddr;
+int AddrSize;
 SOCKET sClient_Image;
+sockaddr_in RecvAddr_Image;
+sockaddr_in SendAddr_Image;
 
 LARGE_INTEGER cpuFreq;
 double delay;// M2S delay
 Sender<hapticMessageS2M> *sender;
 threadsafe_queue<hapticMessageS2M> backwardQ;
 
-cBulletBox* bulletBox0, *bulletBox0_MMT;
-cBulletBox* bulletBox1, *bulletBox1_MMT;
+cBulletBox* bulletBox0;
+cBulletBox* bulletBox1;
 
 
 // bullet static walls and ground
-cBulletStaticPlane* bulletInvisibleWall1,* bulletInvisibleWall1_MMT;
-cBulletStaticPlane* bulletInvisibleWall2,* bulletInvisibleWall2_MMT;
-cBulletStaticPlane* bulletInvisibleWall3,* bulletInvisibleWall3_MMT;
-cBulletStaticPlane* bulletInvisibleWall4,* bulletInvisibleWall4_MMT;
-cBulletStaticPlane* bulletInvisibleWall5,* bulletInvisibleWall5_MMT;
+cBulletStaticPlane* bulletInvisibleWall1;
+cBulletStaticPlane* bulletInvisibleWall2;
+cBulletStaticPlane* bulletInvisibleWall3;
+cBulletStaticPlane* bulletInvisibleWall4;
+cBulletStaticPlane* bulletInvisibleWall5;
 
 cHapticDeviceInfo Falcon = {
 	C_HAPTIC_DEVICE_FALCON,
@@ -460,7 +252,7 @@ public:
 	}
 
 	bool isEpisodeEnd() {
-		if(bulletBox0->getLocalPos().y() > 0.9)
+		if (bulletBox0->getLocalPos().y() > 0.9)
 			return true;
 		return false;
 	};
@@ -471,7 +263,7 @@ public:
 		Reset();
 	};
 
-	void Reset() {		
+	void Reset() {
 		score = 0;
 		slot = 0;
 		bulletBox0->setLocalPos(initialPos);
@@ -539,7 +331,7 @@ inline int socketServerInit(u_short listenPort, SOCKET &sClient) {
 	// socket communication setup
 	//--------------------------------------------------------------------------
 	QueryPerformanceFrequency(&cpuFreq);
-	//初始化WSA  
+	//initialize WSA  
 	sockVersion = MAKEWORD(2, 2);
 
 	if (WSAStartup(sockVersion, &wsaData) != 0)
@@ -549,7 +341,7 @@ inline int socketServerInit(u_short listenPort, SOCKET &sClient) {
 		return 0;
 	}
 
-	//创建套接字  
+	//create socket 
 	slisten = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (slisten == INVALID_SOCKET)
 	{
@@ -557,7 +349,7 @@ inline int socketServerInit(u_short listenPort, SOCKET &sClient) {
 		return 0;
 	}
 
-	//绑定IP和端口  
+	//bind ip and port
 	sockaddr_in sin;
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(listenPort);
@@ -567,24 +359,24 @@ inline int socketServerInit(u_short listenPort, SOCKET &sClient) {
 		printf("bind error !");
 	}
 
-	//开始监听  
+	//start listening
 	if (listen(slisten, 5) == SOCKET_ERROR)
 	{
 		printf("listen error !");
 		return 0;
 	}
 
-	//循环接收数据  
+	
 	sockaddr_in remoteAddr;
 	int nAddrlen = sizeof(remoteAddr);
 
-	printf("等待连接...\n");
+	printf("wait to connection...\n");
 	sClient = accept(slisten, (SOCKADDR *)&remoteAddr, &nAddrlen);
 	if (sClient == INVALID_SOCKET)
 	{
 		printf("accept error !");
 	}
-	printf("接受到一个连接：%s:%d \r\n", inet_ntoa(remoteAddr.sin_addr), ntohs(remoteAddr.sin_port));
+	printf("accept a connection：%s:%d \r\n", inet_ntoa(remoteAddr.sin_addr), ntohs(remoteAddr.sin_port));
 
 	unsigned long on_windows = 1;
 	if (ioctlsocket(sClient, FIONBIO, &on_windows) == SOCKET_ERROR) {
@@ -610,7 +402,7 @@ inline int socketClientInit() {
 		printf("invalid socket!");
 		return 0;
 	}
-	//绑定IP和端口  
+	//bind ip and port
 	sockaddr_in sin;
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(8889);
@@ -625,7 +417,7 @@ inline int socketClientInit() {
 	serAddr.sin_port = htons(4242);
 	serAddr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 	if (connect(sClient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
-	{  //连接失败 
+	{  //connection failed
 		printf("connect error !");
 		closesocket(sClient);
 		//return 0;
@@ -675,8 +467,58 @@ int main(int argc, char* argv[])
 	// initialized deadband classes for force and velocity
 	DBForce = new DeadbandDataReduction(ForceDeadbandParameter);
 
-	socketServerInit(888, sClient);
-	socketServerInit(889, sClient_Image);
+	/*socketServerInit(888, sClient);
+	socketServerInit(889, sClient_Image);*/
+	QueryPerformanceFrequency(&cpuFreq);
+	std::cout << cpuFreq.QuadPart << std::endl;
+	sockVersion = MAKEWORD(2, 2);
+
+	WSADATA wsaData;
+	SOCKET SendSocket;
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+	sClient = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sClient == INVALID_SOCKET)
+	{
+		printf("invalid socket!");
+		return 0;
+	}
+
+	RecvAddr.sin_family = AF_INET;
+	RecvAddr.sin_port = htons(888);
+	RecvAddr.sin_addr.s_addr = INADDR_ANY;
+	if (bind(sClient, (SOCKADDR *)&RecvAddr, sizeof(RecvAddr))) {
+		printf("bind error !");
+	}
+	SendAddr.sin_family = AF_INET;
+	SendAddr.sin_port = htons(887);
+	SendAddr.sin_addr.s_addr = inet_addr(IP_master.data());
+
+	sClient_Image = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sClient_Image == INVALID_SOCKET)
+	{
+		printf("invalid socket!");
+		return 0;
+	}
+
+	RecvAddr_Image.sin_family = AF_INET;
+	RecvAddr_Image.sin_port = htons(889);
+	RecvAddr_Image.sin_addr.s_addr = INADDR_ANY;
+	bind(sClient_Image, (SOCKADDR *)&RecvAddr_Image, sizeof(RecvAddr_Image));
+
+	SendAddr_Image.sin_family = AF_INET;
+	SendAddr_Image.sin_port = htons(886);
+	SendAddr_Image.sin_addr.s_addr = inet_addr(IP_master.data());
+
+	unsigned long on_windows = 1;
+	if (ioctlsocket(sClient, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
+	if (ioctlsocket(sClient_Image, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
+
+	AddrSize = sizeof(sockaddr_in);
 	//--------------------------------------------------------------------------
 	// OPEN GL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -757,10 +599,10 @@ int main(int argc, char* argv[])
 
 	// create a new world.
 	world = new cBulletWorld();
-	
+
 	// set the background color of the environment
 	world->m_backgroundColor.setWhite();
-	
+
 	// create a camera and insert it into the virtual world
 	camera = new cCamera(world);
 	world->addChild(camera);
@@ -770,7 +612,7 @@ int main(int argc, char* argv[])
 		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
 		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
 
-	// set the near and far clipping planes of the camera
+									 // set the near and far clipping planes of the camera
 	camera->setClippingPlanes(0.01, 10.0);
 
 	// set stereo mode
@@ -862,14 +704,13 @@ int main(int argc, char* argv[])
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
 	double workspaceScaleFactor = tool->getWorkspaceScaleFactor();//tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
-	// hapticDeviceInfo.m_workspaceRadius----->0.04
-	// stiffness properties
-	// retrieve information about the current haptic device
+																  // hapticDeviceInfo.m_workspaceRadius----->0.04
+																  // stiffness properties
+																  // retrieve information about the current haptic device
 	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
 	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-	std::cout << workspaceScaleFactor << std::endl;
+	std::cout << "space factor and max stiffness: " << workspaceScaleFactor << ", " << maxStiffness << std::endl;
 	world->setGravity(0.0, 0.0, -9.8);
-	WAVE.scaleFactor = workspaceScaleFactor;
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
 	//////////////////////////////////////////////////////////////////////////
@@ -877,7 +718,7 @@ int main(int argc, char* argv[])
 
 	// create three objects that are added to the world
 	bulletBox0 = new cBulletBox(world, size, size, size);
-	world->addChild(bulletBox0);
+	//world->addChild(bulletBox0);
 
 	bulletBox1 = new cBulletBox(world, size, size, size);
 	world->addChild(bulletBox1);
@@ -885,41 +726,41 @@ int main(int argc, char* argv[])
 	// define some material properties for each cube
 	cMaterial mat0, mat1;
 	mat0.setRedIndian();
-	mat0.setStiffness(0.3 * maxStiffness);
-	mat0.setDynamicFriction(0.6);
-	mat0.setStaticFriction(0.6);
+	mat0.setStiffness(0.06 * maxStiffness);
+	mat0.setDynamicFriction(0.5);
+	mat0.setStaticFriction(0.5);
 	bulletBox0->setMaterial(mat0);
 
 	mat1.setBlueRoyal();
-	mat1.setStiffness(0.3 * maxStiffness);
-	mat1.setDynamicFriction(0.6);
-	mat1.setStaticFriction(0.6);
+	mat1.setStiffness(0.06 * maxStiffness);
+	mat1.setDynamicFriction(0.5);
+	mat1.setStaticFriction(0.5);
 	bulletBox1->setMaterial(mat1);
 
 	// define some mass properties for each cube
 	bulletBox0->setMass(0.5);
-	bulletBox1->setMass(0.05);
-	
+	bulletBox1->setMass(0.5);
+
 
 	// estimate their inertia properties
 	bulletBox0->estimateInertia();
 	bulletBox1->estimateInertia();
-	
+
 
 	// create dynamic models
 	//bulletBox0->buildDynamicModel();
 	bulletBox1->buildDynamicModel();
-	
+
 
 	// create collision detector for haptic interaction
 	bulletBox0->createAABBCollisionDetector(toolRadius);
 	bulletBox1->createAABBCollisionDetector(toolRadius);
-	
+
 
 	// set friction values
 	bulletBox0->setSurfaceFriction(0.4);
 	bulletBox1->setSurfaceFriction(0.4);
-	
+
 
 	// set position of each cube
 	bulletBox0->setLocalPos(0.0, -0.6, 0.5);
@@ -945,31 +786,31 @@ int main(int argc, char* argv[])
 	//////////////////////////////////////////////////////////////////////////
 
 	//////////////////////////////////////////////////////////////////////////
-    // GROUND
-    //////////////////////////////////////////////////////////////////////////
+	// GROUND
+	//////////////////////////////////////////////////////////////////////////
 
-    // create ground plane
+	// create ground plane
 	cBulletStaticPlane *ground = new cBulletStaticPlane(world, cVector3d(0.0, 0.0, 1.0), 0);
 
-    // add plane to world as we will want to make it visibe
+	// add plane to world as we will want to make it visibe
 	world->addChild(ground);
 
-    // create a mesh plane where the static plane is located
-    cCreatePlane(ground, 3.0, 3.0, cVector3d(0,0,0));
+	// create a mesh plane where the static plane is located
+	cCreatePlane(ground, 3.0, 3.0, cVector3d(0, 0, 0));
 
-    // define some material properties and apply to mesh
-    cMaterial matGround;
-    matGround.setStiffness(0.5 * maxStiffness);
-	matGround.setDynamicFriction(0.2);
-    matGround.setStaticFriction(0.0);
-    matGround.setWhite();
-    matGround.m_emission.setGrayLevel(0.3);
+	// define some material properties and apply to mesh
+	cMaterial matGround;
+	matGround.setStiffness(0.15 * maxStiffness);
+	matGround.setDynamicFriction(0.3);
+	matGround.setStaticFriction(0.35);
+	matGround.setWhite();
+	matGround.m_emission.setGrayLevel(0.3);
 	ground->setMaterial(matGround);
 
-    // setup collision detector for haptic interaction
+	// setup collision detector for haptic interaction
 	ground->createAABBCollisionDetector(toolRadius);
 
-    // set friction values
+	// set friction values
 	ground->setSurfaceFriction(0.4);
 	// set material properties
 	bool fileload;
@@ -1000,177 +841,25 @@ int main(int argc, char* argv[])
 	// create a label to display the haptic and graphic rate of the simulation
 	labelRates = new cLabel(font);
 	camera->m_frontLayer->addChild(labelRates);
-	
 
-	//-----------------------------------------------------------------------
-	// A COPY-WORLD - CAMERA - LIGHTING - Used by MMT algorithm
-	//-----------------------------------------------------------------------
-	// create a new world.
-	world_MMT = new cBulletWorld();
 
-	// set the background color of the environment
-	world_MMT->m_backgroundColor.setWhite();
 
-	// create a camera and insert it into the virtual world
-	camera_MMT = new cCamera(world_MMT);
-	world_MMT->addChild(camera_MMT);
-
-	// position and orient the camera
-	camera_MMT->set(cVector3d(2.5, 0.0, 1.3),    // camera position (eye)
-		cVector3d(0.0, 0.0, 0.5),    // lookat position (target)
-		cVector3d(0.0, 0.0, 1.0));   // direction of the "up" vector
-
-									 // set the near and far clipping planes of the camera
-	camera_MMT->setClippingPlanes(0.01, 10.0);
-
-	// set stereo mode
-	camera_MMT->setStereoMode(stereoMode);
-
-	// set stereo eye separation and focal length (applies only if stereo is enabled)
-	camera_MMT->setStereoEyeSeparation(0.02);
-	camera_MMT->setStereoFocalLength(2.0);
-
-	// set vertical mirrored display mode
-	camera_MMT->setMirrorVertical(mirroredDisplay);
-
-	// create a light source
-	light_MMT = new cSpotLight(world_MMT);
-
-	// attach light to camera
-	world_MMT->addChild(light_MMT);
-
-	// enable light source
-	light_MMT->setEnabled(true);
-
-	// position the light source
-	light_MMT->setLocalPos(0.0, 0.0, 2.2);
-
-	// define the direction of the light beam
-	light_MMT->setDir(0.0, 0.0, -1.0);
-
-	// set uniform concentration level of light 
-	light_MMT->setSpotExponent(0.0);
-
-	// enable this light source to generate shadows
-	light_MMT->setShadowMapEnabled(true);
-
-	// set the resolution of the shadow map
-	light_MMT->m_shadowMap->setQualityLow();
-	//light->m_shadowMap->setQualityMedium();
-
-	// set light cone half angle
-	light_MMT->setCutOffAngleDeg(45);
 
 	////////////////////////////////////////////////////////////////////////////
 	//// retrieve information about the current haptic device
 	//cHapticDeviceInfo info = hapticDevice->getSpecifications();-------------------operated by master
 
-	// create a tool (cursor) and insert into the world
-	tool_MMT = new cToolCursor(world_MMT);
-	world_MMT->addChild(tool_MMT);
-	// map the physical workspace of the haptic device to a larger virtual workspace.
-	tool_MMT->setWorkspaceRadius(1.3);
-
-	// define a radius for the tool
-	tool_MMT->setRadius(toolRadius);
-
-	// hide the device sphere. only show proxy.
-	tool_MMT->setShowContactPoints(true, true);
-
-	// enable if objects in the scene are going to rotate of translate
-	// or possibly collide against the tool. If the environment
-	// is entirely static, you can set this parameter to "false"
-	tool_MMT->enableDynamicObjects(true);
-
-	tool_MMT->m_hapticPoint->initialize();
-	tool_MMT->m_material->m_ambient.set(1.0, 1.0, 1.0);
-	tool_MMT->m_material->m_diffuse.set(1.0, 1.0, 1.0);
-	tool_MMT->m_material->m_specular.set(1.0, 1.0, 1.0);
-	tool_MMT->setTransparencyLevel(1);
-
-	world_MMT->setGravity(0.0, 0.0, -9.8);
 
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
 	//////////////////////////////////////////////////////////////////////////
 
-	// create three objects that are added to the world
-	bulletBox0_MMT = new cBulletBox(world_MMT, size, size, size);
-	world_MMT->addChild(bulletBox0_MMT);
-
-	bulletBox1_MMT = new cBulletBox(world_MMT, size, size, size);
-	world_MMT->addChild(bulletBox1_MMT);
-
-	// define some material properties for each cube
-	bulletBox0_MMT->setMaterial(mat0);
-
-	bulletBox1_MMT->setMaterial(mat1);
-
-	// define some mass properties for each cube
-	bulletBox0_MMT->setMass(0.5);
-	bulletBox1_MMT->setMass(0.05);
-
-	// estimate their inertia properties
-	bulletBox0_MMT->estimateInertia();
-	bulletBox1_MMT->estimateInertia();
-
-	// create dynamic models
-	//bulletBox0_MMT->buildDynamicModel();
-	bulletBox1_MMT->buildDynamicModel();
-
-
-	// create collision detector for haptic interaction
-	bulletBox0_MMT->createAABBCollisionDetector(toolRadius);
-	bulletBox1_MMT->createAABBCollisionDetector(toolRadius);
-
-
-	// set friction values
-	bulletBox0_MMT->setSurfaceFriction(0.4);
-	bulletBox1_MMT->setSurfaceFriction(0.4);
-
-
-	// set position of each cube
-	bulletBox0_MMT->setLocalPos(0.0, -0.6, 0.5);
-	bulletBox1_MMT->setLocalPos(0.0, 0.6, 0.5);
-
-	bulletBox0_MMT->setGhostEnabled(true);
-	bulletBox1_MMT->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
-	bulletBox1_MMT->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
-	//////////////////////////////////////////////////////////////////////////
-	// INVISIBLE WALLS
-	//////////////////////////////////////////////////////////////////////////
-
-	// we create 5 static walls to contain the dynamic objects within a limited workspace
-	bulletInvisibleWall1_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
-	bulletInvisibleWall2_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, -1.0, 0.0), -planeWidth);
-	bulletInvisibleWall3_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 1.0, 0.0), -planeWidth);
-	bulletInvisibleWall4_MMT = new cBulletStaticPlane(world_MMT, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
-	bulletInvisibleWall5_MMT = new cBulletStaticPlane(world_MMT, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
 
 	//////////////////////////////////////////////////////////////////////////
 	// GROUND
 	//////////////////////////////////////////////////////////////////////////
 
-	// create ground plane
-	cBulletStaticPlane *ground_MMT = new cBulletStaticPlane(world_MMT, cVector3d(0.0, 0.0, 1.0), 0);
 
-	// add plane to world as we will want to make it visibe
-	world_MMT->addChild(ground_MMT);
-
-	// create a mesh plane where the static plane is located
-	cCreatePlane(ground_MMT, 3.0, 3.0, cVector3d(0, 0, 0));
-
-	// define some material properties and apply to mesh
-	ground_MMT->setMaterial(matGround);
-
-	// setup collision detector for haptic interaction
-	ground_MMT->createAABBCollisionDetector(toolRadius);
-
-	// set friction values
-	ground_MMT->setSurfaceFriction(0.4);
-	// set material properties
-	ground_MMT->m_texture = cTexture2d::create();
-	fileload = ground_MMT->m_texture->loadFromFile("resources/wood.jpg");
 	if (!fileload)
 	{
 		std::cout << "Error - Texture image failed to load correctly." << std::endl;
@@ -1178,25 +867,11 @@ int main(int argc, char* argv[])
 		return (-1);
 	}
 
-	// enable texture mapping
-	ground_MMT->setUseTexture(true);
-	ground_MMT->m_material->setWhite();
-
-	// create normal map from texture data
-	cNormalMapPtr normalMap0_MMT = cNormalMap::create();
-	normalMap0_MMT->createMap(ground_MMT->m_texture);
-	ground_MMT->m_normalMap = normalMap0_MMT;
-	world_MMT->setEnabled(false, true);
 	//--------------------------------------------------------------------------
 	// WIDGETS
 	//--------------------------------------------------------------------------
 
 	// create a font
-	font_MMT = NEW_CFONTCALIBRI20();
-
-	// create a label to display the haptic and graphic rate of the simulation
-	labelRates_MMT = new cLabel(font_MMT);
-	camera_MMT->m_frontLayer->addChild(labelRates_MMT);
 
 	//--------------------------------------------------------------------------
 	// FRAMEBUFFERS
@@ -1208,7 +883,7 @@ int main(int argc, char* argv[])
 
 	// create framebuffer for view 2
 	frameBuffer2 = cFrameBuffer::create();
-	frameBuffer2->setup(camera_MMT);
+
 
 	//--------------------------------------------------------------------------
 	// VIEW PANELS
@@ -1238,6 +913,8 @@ int main(int argc, char* argv[])
 	sender = new Sender<hapticMessageS2M>();
 	sender->Q = &backwardQ;
 	sender->s = sClient;
+	sender->AddrSize = AddrSize;
+	sender->SendAddr = SendAddr;
 	unsigned  uiThread1ID;
 	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
 		0,             // stack size
@@ -1437,15 +1114,14 @@ void updateHaptics(void)
 
 		// compute global reference frames for each object
 		world->computeGlobalPositions(true);
-		world_MMT->computeGlobalPositions(true);
 		/////////////////////////////////////////////////////////////////////
 		// READ HAPTIC DEVICE
 		/////////////////////////////////////////////////////////////////////
 		hapticMessageM2S msgM2S;
 
-		int ret = recv(sClient, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0);
+		int ret = recvfrom(sClient, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0,(SOCKADDR *)&RecvAddr, &AddrSize);
+		
 		if (ret>0) {
-			
 			// we receive some char data and transform it to hapticMessageM2S.
 			unprocessedPtr += ret;
 
@@ -1466,7 +1142,7 @@ void updateHaptics(void)
 		}
 		while (commandQ.size()) {
 			msgM2S = commandQ.front();
-			
+
 
 			// read position 
 			cVector3d position(msgM2S.position[0], msgM2S.position[1], msgM2S.position[2]);
@@ -1498,76 +1174,30 @@ void updateHaptics(void)
 			button2 = msgM2S.button2;
 			button3 = msgM2S.button3;
 
-			tool_MMT->setDeviceLocalPos(position);
-			tool_MMT->setDeviceLocalRot(rotation);
-			tool_MMT->setDeviceLocalAngVel(angularVelocity);
-			tool_MMT->setDeviceLocalLinVel(linearVelocity);
-			tool_MMT->setUserSwitches(allSwitches);
-			tool_MMT->setGripperAngleRad(gripperAngle);
-			tool_MMT->setGripperAngVel(gripperAngularVelocity);
-			tool_MMT->setUserSwitch(0, button0);
-			tool_MMT->setUserSwitch(1, button1);
-			tool_MMT->setUserSwitch(2, button2);
-			tool_MMT->setUserSwitch(3, button3);
 			/////////////////////////////////////////////////////////////////////
 			// COMPUTE AND APPLY FORCES
 			/////////////////////////////////////////////////////////////////////
 
-			// compute interaction forces
-			tool_MMT->computeInteractionForces();
-
-			int numInteractionPoints = tool_MMT->getNumHapticPoints();
-			for (int i = 0; i<numInteractionPoints; i++)
-			{
-				// get pointer to next interaction point of tool
-				cHapticPoint* interactionPoint = tool_MMT->getHapticPoint(i);
-
-				// check all contact points
-				int numContacts = interactionPoint->getNumCollisionEvents();
-				for (int i = 0; i<numContacts; i++)
-				{
-					cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
-
-					// given the mesh object we may be touching, we search for its owner which
-					// could be the mesh itself or a multi-mesh object. Once the owner found, we
-					// look for the parent that will point to the Bullet object itself.
-					cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
-
-					// cast to Bullet object
-					cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
-
-					// if Bullet object, we apply interaction forces
-					if (bulletobject != NULL)
-					{
-						bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
-							collisionEvent->m_globalPos - object->getLocalPos());
-					}
-				}
-			}
 
 			// update simulation
-			world_MMT->updateDynamics(0.001);
-
-			MMT.MasterPar.parPosition = bulletBox1_MMT->getLocalPos();
-			
 
 			if (commandQ.size() > 1) {
-				commandQ.pop();				
+				commandQ.pop();
 			}
 			if (commandQ.size() == 1) {
 				break;
 			}
-				
+
 		}
 		if (commandQ.size()) {
 
-			
+
 			msgM2S = commandQ.front();
 			commandQ.pop();
 
 			//calculate M2S delay
 			__int64 curtime;
-			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);			
+			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			delay = ((double)(curtime - msgM2S.timestamp) / (double)cpuFreq.QuadPart) * 1000;
 
 			// read position 
@@ -1599,62 +1229,16 @@ void updateHaptics(void)
 			button1 = msgM2S.button1;
 			button2 = msgM2S.button2;
 			button3 = msgM2S.button3;
-			
-			memcpy(MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
-			memcpy(TDPA.E_recv, msgM2S.energy, 3*sizeof(double));
 
-			double vr[3];
-			memcpy(vr, msgM2S.waveVariable, 3 * sizeof(double));
-			WAVE.WV.vr = cVector3d(vr[0], vr[1], vr[2]);
+			memcpy(MasterVelocity, msgM2S.linearVelocity, 3 * sizeof(double));
 
 			switch (msgM2S.ATypeChange) {
 			case AlgorithmType::AT_None:
-				ControlMode = 0;
-				TDPA.TDPAon = false;
-				MMT.enable = false;
-				world_MMT->setEnabled(false, true);
-				WAVE.waveOn = false;
-				break;
-			case AlgorithmType::AT_TDPA:
 				ControlMode = 1;
-				TDPA.TDPAon = true;
-				TDPA.Initialize();
-				MMT.enable = false;
-				world_MMT->setEnabled(false, true);
-				WAVE.waveOn = false;
-				break;
-			case AlgorithmType::AT_ISS:
-				ControlMode = 1;
-				TDPA.TDPAon = false;
-				MMT.enable = false;
-				world_MMT->setEnabled(false, true);
-				WAVE.waveOn = false;
-				break;
-			case AlgorithmType::AT_MMT:
-				ControlMode = 0;
-				TDPA.TDPAon = false;
-				MMT.enable = true;
-				MMT.Initialize();
-				world_MMT->setEnabled(true, true);
-				WAVE.waveOn = false;
-				break;
-			case AlgorithmType::AT_WAVE:
-				ControlMode = 1;
-				TDPA.TDPAon = false;
-				MMT.enable = false;
-				world_MMT->setEnabled(false, true);
-				WAVE.waveOn = true;
-				WAVE.Initialize();
 				break;
 			case AlgorithmType::AT_KEEP:
 				break;
 			}
-							
-			
-
-
-			TDPA.VelocityRevise(MasterVelocity, SlaveForce);
-			WAVE.VelocityRevise(MasterVelocity, &WAVE.WV, SlaveForce);
 
 			if (ControlMode == 1) { // if velocity control mode is selected
 									// Compute tool position using delayed velocity signal
@@ -1667,7 +1251,7 @@ void updateHaptics(void)
 			}
 			else {
 				memcpy(MasterPosition, msgM2S.position, 3 * sizeof(double));
-			}			
+			}
 			position.x(MasterPosition[0]);
 			position.y(MasterPosition[1]);
 			position.z(MasterPosition[2]);
@@ -1690,31 +1274,15 @@ void updateHaptics(void)
 			// compute interaction forces
 			tool->computeInteractionForces();
 
-			
-
 
 			cVector3d force = tool->getDeviceLocalForce();
 			cVector3d torque = tool->getDeviceLocalTorque();
 			double gripperForce = tool->getGripperForce();
-			WAVE.getWave_r(WAVE.b, &WAVE.WV, cVector3d(SlaveForce[0], SlaveForce[1], SlaveForce[2]));
-			
-			double ur[3] = { WAVE.WV.ur.x(), WAVE.WV.ur.y(), WAVE.WV.ur.z() };
-
-			MMT_ALGORITHM::envPar MMTParameters;
-			if (MMT.isTransmit()) {
-				MMTParameters = MMT.SlavePar;
-				MMT.MasterPar = MMT.SlavePar;
-				MMT.MasterPar.Flag = false;
-				bulletBox1_MMT->setLocalPos(MMT.SlavePar.parPosition);
-			}
-			else {
-				MMTParameters = MMT.MasterPar;				
-			}
 
 			MasterForce[0] = force.x();
 			MasterForce[1] = force.y();
 			MasterForce[2] = force.z();
-			
+
 			// Slave side: Perceptual deadband data reduction is applied
 			DBForce->GetCurrentSample(MasterForce); // pass the current sample for DB data reduction
 			DBForce->ApplyZOHDeadband(MasterForce, &ForceTransmitFlag); // apply DB data reduction
@@ -1722,15 +1290,6 @@ void updateHaptics(void)
 			SlaveForce[0] = -1 * force.x();
 			SlaveForce[1] = -1 * force.y();
 			SlaveForce[2] = -1 * force.z();
-			
-			if (ForceTransmitFlag == true) {
-				memcpy(TDPA.E_trans, TDPA.E_in, 3 * sizeof(double));
-				memcpy(TDPA.E_in_last, TDPA.E_in, 3 * sizeof(double));
-			}
-			else
-			{
-				memcpy(TDPA.E_trans, TDPA.E_in_last, 3 * sizeof(double));
-			}
 
 			/////////////////////////////////////////////////////////////////////
 			// Send Forces
@@ -1739,13 +1298,9 @@ void updateHaptics(void)
 			for (int i = 0; i < 3; i++) {
 				msgS2M.force[i] = MasterForce[i];// modified by TDPA
 				msgS2M.torque[i] = torque(i);
-				msgS2M.MMTParameters[i] = MMTParameters.parPosition(i);
-				msgS2M.MMTParameters[i+3] = MMTParameters.parStiffness(i);
 			}
-			msgS2M.MMTParameters[6] = MMTParameters.Flag;
+
 			msgS2M.gripperForce = gripperForce;
-			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
-			memcpy(msgS2M.waveVariable, ur, 3 * sizeof(double));
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			msgS2M.timestamp = curtime;
 			//send(sClient, (char *)&msgS2M, sizeof(hapticMessageS2M), 0); 
@@ -1807,17 +1362,7 @@ void updateHaptics(void)
 
 		// update simulation
 		world->updateDynamics(timeInterval);
-		MMT.SlavePar.parPosition = bulletBox1->getLocalPos();
-		cHapticPoint* p = tool->getHapticPoint(0);
-		
-		for (int i = 0; i < 3; i++) {
-			double deltaX = p->getLocalPosGoal()(i) - p->getLocalPosProxy()(i);
-			if (deltaX) {
-				MMT.oldStiffness(i) = abs(p->getLastComputedForce()(i) / deltaX);
-			}			
-		}
-		//MMT.oldStiffness = cTransform(tool->getGlobalRot())*MMT.oldStiffness;
-		MMT.SlavePar.parStiffness = MMT.Average(MMT.oldStiffness);
+
 	}
 
 	// exit haptics thread
@@ -1833,7 +1378,7 @@ void updateGraphics(void)
 
 	// update haptic and graphic rate data
 	labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "M2S delay:" + cStr(delay, 3) 
+		cStr(freqCounterHaptics.getFrequency(), 0) + " Hz " + "S2M delay:" + cStr(delay, 3)
 		+ " " + cStr(MasterVelocity[0], 3) + " " + cStr(MasterVelocity[1], 3) + " " + cStr(MasterVelocity[2], 3));
 
 	// update position of label
@@ -1842,18 +1387,17 @@ void updateGraphics(void)
 	/////////////////////////////////////////////////////////////////////
 	// RENDER SCENE
 	/////////////////////////////////////////////////////////////////////
-	
+
 	// update shadow maps (if any)
 	world->updateShadowMaps(false, mirroredDisplay);
-	
-	world_MMT->updateShadowMaps(false, mirroredDisplay);
 
 	// render all framebuffers
 	frameBuffer1->renderView();
 	frameBuffer2->renderView();
 	cImagePtr ImgPtr = cImage::create();
 	frameBuffer1->copyImageBuffer(ImgPtr);
-	send(sClient_Image, (const char *)ImgPtr->getData(), ImgPtr->getSizeInBytes(),0);
+	//send(sClient_Image, (const char *)ImgPtr->getData(), ImgPtr->getSizeInBytes(),0);
+	//sendto(sClient_Image, (const char *)ImgPtr->getData(), ImgPtr->getSizeInBytes(), 0, (SOCKADDR *)&SendAddr_Image, sizeof(SendAddr));
 	// render world
 	cameraMain->renderView(width, height);
 	ImgPtr->clear();

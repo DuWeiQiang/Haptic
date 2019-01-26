@@ -43,6 +43,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "commTool.h"
 #include "config.h"
 #include "HapticCommLib.h"
+#include <string>
+#include <string.h>
+#include <stdlib.h>
 //------------------------------------------------------------------------------
 #include "chai3d.h"
 #include "CBullet.h"
@@ -67,6 +70,10 @@ KalmanFilter VelocityKalmanFilter; // applies 3 DoF kalman filtering to remove n
 bool FlagForceKalmanFilter = true;
 KalmanFilter ForceKalmanFilter; // applies 3 DoF kalman filtering to remove noise from force signal
 
+std::string IP_master = cfg.getValueOfKey<std::string>("MasterIP");
+std::string IP_slave = cfg.getValueOfKey<std::string>("SlaveIP");
+
+
 DeadbandDataReduction* DBVelocity; // data reduction class for velocity samples
 DeadbandDataReduction* DBPosition; // data reduction class for position samples
 
@@ -83,257 +90,6 @@ AlgorithmType ATypeChange = AlgorithmType::AT_None;
 
 Sender<hapticMessageM2S> *sender;
 threadsafe_queue<hapticMessageM2S> forwardQ;
-
-class MMT_ALGORITHM {
-public:
-	bool enable = false;
-	/*
-	enviroment variable:
-	1. box position;
-	3. K used to calculate the force
-	*/
-	static struct envPar
-	{
-		cVector3d parPosition;
-		cVector3d parStiffness;
-		bool Flag;//whether this parameters is used to update the master's enviroment
-	};
-	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-	cVector3d oldStiffness;
-	int length = 100;
-	int index = 0;
-	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
-
-	void ForceRevise(double* force, cVector3d goalPos, cVector3d proxyPos) {
-		if (!enable)return;
-		cVector3d Temp = MasterPar.parStiffness;
-		Temp.mulElement(proxyPos - goalPos);
-		force[0] = Temp(0);
-		force[1] = Temp(1);
-		force[2] = Temp(2);
-	}
-
-	void Initialize() {
-		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-		index = 0;
-		oldStiffness = cVector3d(0, 0, 0);
-		for (int i = 0; i < 100; i++) {
-			parStiffness[i] = cVector3d(0, 0, 0);
-		}
-	}
-
-	cVector3d Average(cVector3d temp) {
-		if (index < 100) {
-			parStiffness[index] = temp;
-			index += 1;
-		}
-		else {
-			parStiffness[index % 100] = temp;
-			index = index % 100;
-		}
-		cVector3d avg;
-		for (int i = 0; i < 100; i++) {
-			avg += parStiffness[i];
-		}
-		avg /= 100;
-		return avg;
-	}
-
-	bool isTransmit() {
-		for (int i = 0; i < 3; i++) {
-			// The threshold of  change rate is 10 percentage
-			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
-				return true;
-			// The threshold of  position offset is 0.1 meters
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
-				return true;
-		}
-		return false;
-	}
-
-	/*
-	dead band parameter
-	*/
-	double db;
-}MMT;
-
-class WAVE_ALGORITHM {
-public:
-	// b=1.2 for Touch
-	double b = 8;	//damping factor
-	bool waveOn = false;
-	double scaleFactor = 1;
-	KalmanFilter *KF = new KalmanFilter();
-	// WAVE algorithm variables
-	struct WaveV
-	{
-
-		cVector3d ul;	//sent signal OP
-		cVector3d vl;	//received signal OP
-		cVector3d ur;	//sent signal TOP
-		cVector3d vr;	//received signal OP
-		cVector3d F;	//force at OP
-	};
-
-	WaveV WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
-
-	void VelocityRevise(double* vel, WaveV* wave, double* force) {
-		if (waveOn) {
-			cVector3d temp = getVel_r(b, wave, cVector3d(force[0], force[1], force[2]));
-			vel[0] = temp.x() * scaleFactor;
-			vel[1] = temp.y() * scaleFactor;
-			vel[2] = temp.z() * scaleFactor;
-		}
-	}
-
-	void ForceRevise(double* vel, WaveV* wave, double* force) {
-		if (waveOn) {
-			cVector3d temp = getForce_l(b, wave, cVector3d(vel[0], vel[1], vel[2]) / scaleFactor);
-			force[0] = -1 * temp.x();
-			force[1] = -1 * temp.y();
-			force[2] = -1 * temp.z();
-		}
-	}
-
-	void getWave_l(double b, WaveV* wave, cVector3d vel)
-	{
-		if (waveOn) {
-			wave->ul = sqrt(2 * b)*vel / scaleFactor + wave->vl;
-			double ttemp[3] = { WV.ul.x(),WV.ul.y(),WV.ul.z() };
-			KF->ApplyKalmanFilter(ttemp);
-			WV.ul.x(KF->CurrentEstimation[0]);
-			WV.ul.y(KF->CurrentEstimation[1]);
-			WV.ul.z(KF->CurrentEstimation[2]);
-		}
-	}
-
-	void getWave_r(double b, WaveV* wave, cVector3d f)
-	{
-		wave->ur = (sqrt(2 / b)*f - wave->vr);
-	}
-
-	cVector3d getVel_r(double b, WaveV* wave, cVector3d f)
-	{
-		return -1 / b*(f - sqrt(2 * b)*wave->vr);
-	}
-
-	cVector3d getForce_l(double b, WaveV* wave, cVector3d vel)
-	{
-		return 1 * b*vel / scaleFactor + sqrt(2 * b)*wave->vl;
-	}
-
-	void Initialize() {
-		WV = { cVector3d(0,0,0),cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0), cVector3d(0,0,0) };
-		delete KF;
-		KF = new KalmanFilter();
-	}
-}WAVE;
-
-class TDPA_Algorithm {
-public:
-	double sample_interval = 0.001;   //1kHz
-	double E_in[3] = { 0,0,0 }, E_out[3] = { 0,0,0 };
-	double E_in_last[3] = { 0,0,0 };
-	double E_trans[3] = { 0,0,0 }, E_recv[3] = { 0,0,0 };
-	double alpha[3] = { 0,0,0 }, beta[3] = { 0,0,0 };
-	bool TDPAon = false;
-	void ComputeEnergy(double vel[3], double force[3])
-	{
-		for (int i = 0; i < 3; i++) {
-			// only for z direction
-			double power = vel[i] * (-1 * force[i]);
-			if (power >= 0) {
-				E_in[i] = E_in[i] + sample_interval*power;
-			}
-			else {
-				E_out[i] = E_out[i] - sample_interval*power;
-			}
-		}
-
-	};
-	// only used by master
-	void ForceRevise(double* Vel, double* force) {
-		ComputeEnergy(Vel, force);
-		for (int i = 0; i < 3; i++) {
-			if (E_out[i] > E_recv[i] && abs(Vel[i]) > 0.001)
-			{
-				alpha[i] = (E_out[i] - E_recv[i]) / (sample_interval*Vel[i] * Vel[i]);
-				E_out[i] = E_recv[i];
-			}
-			else
-				alpha[i] = 0;
-
-			// 3. revise force and apply the revised force
-			if (TDPAon)
-				force[i] = force[i] - alpha[i] * Vel[i];
-		}
-	};
-	// only used by slavor
-	void VelocityRevise(double* Vel, double* force) {
-		ComputeEnergy(Vel, force);
-		for (int i = 0; i < 3; i++) {
-			if (E_out[i] > E_recv[i] && abs(force[i]) > 0.001)
-			{
-				beta[i] = (E_out[i] - E_recv[i]) / (sample_interval*force[i] * force[i]);
-				E_out[i] = E_recv[i];
-			}
-			else
-				beta[i] = 0;
-
-			// 3. revise slave vel 
-			if (TDPAon)
-				Vel[i] = Vel[i] - beta[i] * force[i];
-		}
-	};
-
-	void Initialize()
-	{
-		memset(E_in, 0, 3 * sizeof(double));
-		memset(E_out, 0, 3 * sizeof(double));
-		memset(E_in_last, 0, 3 * sizeof(double));
-		memset(E_trans, 0, 3 * sizeof(double));
-		memset(E_recv, 0, 3 * sizeof(double));
-		memset(alpha, 0, 3 * sizeof(double));
-		memset(beta, 0, 3 * sizeof(double));
-	};
-}TDPA;
-
-class ISS_Algorithm {
-public:
-	double mu_max = 10;
-	float stiff_factor = 0.5;
-	double d_force[3] = { 0,0,0 };
-	double tau = 0.005;
-	bool ISS_enabled = false;
-	double last_force[3] = { 0,0,0 };
-	float mu_factor = 1.7;
-
-	void VelocityRevise(double* vel) {
-		if (ISS_enabled) {
-			for (int i = 0; i < 3; i++) {
-				vel[i] = vel[i] + d_force[i] / (mu_max*mu_factor);
-			}
-
-		}
-	};
-
-	void ForceRevise(double* force) {
-		if (ISS_enabled) {
-			for (int i = 0; i < 3; i++) {
-				d_force[i] = (force[i] - last_force[i]) / 0.001;  // get derivation of force respect to time 
-				last_force[i] = force[i];
-				force[i] = force[i] + d_force[i] * tau;  // use "+" because MasterForce direction is opposite to f_e in the paper
-			}
-		}
-	};
-
-	void Initialize()
-	{
-		memset(last_force, 0, 3 * sizeof(double));
-	};
-}ISS;
 
 //
 //------------------------------------------------------------------------------
@@ -385,7 +141,12 @@ WORD sockVersion;
 WSADATA data;
 
 SOCKET sServer;
+sockaddr_in RecvAddr;
+sockaddr_in SendAddr;
+int AddrSize;
 SOCKET sServer_Image;
+sockaddr_in RecvAddr_Image;
+sockaddr_in SendAddr_Image;
 LARGE_INTEGER cpuFreq;
 double delay = 0;
 std::queue<hapticMessageS2M> forceQ;
@@ -529,7 +290,7 @@ void updateHaptics(void);
 void close(void);
 
 
-inline int socketClientInit(const char* addr, u_short remoteport, u_short myPort,SOCKET &sServer) {
+inline int socketClientInit(const char* addr, u_short remoteport, u_short myPort, SOCKET &sServer) {
 	//--------------------------------------------------------------------------
 	// socket communication setup
 	//--------------------------------------------------------------------------
@@ -548,7 +309,7 @@ inline int socketClientInit(const char* addr, u_short remoteport, u_short myPort
 		printf("invalid socket!");
 		return 0;
 	}
-	//绑定IP和端口  
+	//bind ip and port
 	sockaddr_in sin;
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(myPort);
@@ -563,7 +324,7 @@ inline int socketClientInit(const char* addr, u_short remoteport, u_short myPort
 	serAddr.sin_port = htons(remoteport);
 	serAddr.sin_addr.S_un.S_addr = inet_addr(addr);
 	if (connect(sServer, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR)
-	{  //连接失败 
+	{  
 		printf("connect error !");
 		closesocket(sServer);
 		//return 0;
@@ -598,7 +359,7 @@ int main(int argc, char* argv[])
 	// INITIALIZATION
 	//--------------------------------------------------------------------------
 	//std::cout << sizeof(hapticMessageM2S) << "" << sizeof(hapticMessageS2M);
-	std::cout << std::endl; 
+	std::cout << std::endl;
 	std::cout << "-----------------------------------" << std::endl;
 	std::cout << "Teleoperation" << std::endl;
 	std::cout << "-----------------------------------" << std::endl << std::endl << std::endl;
@@ -611,16 +372,61 @@ int main(int argc, char* argv[])
 	std::cout << "[D] - Switch between dynamic delay and constant delay(20ms)" << std::endl;
 	std::cout << std::endl << std::endl;
 
-	
 
-	// initialized deadband classes for force and velocity
+	// initialized deadband classes for force and velocity   IP_master.data() IP_slave.data()
 	DBVelocity = new DeadbandDataReduction(VelocityDeadbandParameter);
 	DBPosition = new DeadbandDataReduction(PositionDeadbandParameter);
 
+	//socketClientInit(IP_slave.data(), 888, 887, sServer);  //10.152.4.191    10.152.4.148
+	//socketClientInit(IP_slave.data(), 889, 886, sServer_Image);  //127.0.0.1   
+	QueryPerformanceFrequency(&cpuFreq);
+	std::cout << cpuFreq.QuadPart << std::endl;
+	sockVersion = MAKEWORD(2, 2);
 
-	socketClientInit("127.0.0.1", 888, 887, sServer);
-	socketClientInit("127.0.0.1", 889, 886, sServer_Image);
+	if (WSAStartup(sockVersion, &data) != 0)
+	{
+		return 0;
+	}
 
+	sServer = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sServer == INVALID_SOCKET)
+	{
+		printf("invalid socket!");
+		return 0;
+	}
+
+	RecvAddr.sin_family = AF_INET;
+	RecvAddr.sin_port = htons(887);
+	RecvAddr.sin_addr.s_addr = INADDR_ANY;
+	if (bind(sServer, (SOCKADDR *)&RecvAddr, sizeof(RecvAddr))){
+		printf("bind error !");
+	}
+	
+	SendAddr.sin_family = AF_INET;
+	SendAddr.sin_port = htons(888);
+	SendAddr.sin_addr.s_addr = inet_addr(IP_slave.data());
+
+	sServer_Image = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+	RecvAddr_Image.sin_family = AF_INET;
+	RecvAddr_Image.sin_port = htons(886);
+	RecvAddr_Image.sin_addr.s_addr = INADDR_ANY;
+	bind(sServer_Image, (SOCKADDR *)&RecvAddr_Image, sizeof(RecvAddr_Image));
+
+	SendAddr_Image.sin_family = AF_INET;
+	SendAddr_Image.sin_port = htons(889);
+	SendAddr_Image.sin_addr.s_addr = inet_addr(IP_slave.data());
+
+	unsigned long on_windows = 1;
+	if (ioctlsocket(sServer, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
+	if (ioctlsocket(sServer_Image, FIONBIO, &on_windows) == SOCKET_ERROR) {
+		printf("non-block error");
+	}
+
+
+	AddrSize = sizeof(sockaddr_in);
 	//--------------------------------------------------------------------------
 	// OPENGL - WINDOW DISPLAY
 	//--------------------------------------------------------------------------
@@ -783,10 +589,10 @@ int main(int argc, char* argv[])
 	world->addChild(tool);
 	// connect the haptic device to the tool
 	tool->setHapticDevice(hapticDevice);
-	
+
 	// map the physical workspace of the haptic device to a larger virtual workspace.
 	tool->setWorkspaceRadius(1.3);
-	
+
 	// define the radius of the tool (sphere)
 	double toolRadius = 0.05;
 
@@ -811,17 +617,15 @@ int main(int argc, char* argv[])
 	// read the scale factor between the physical workspace of the haptic
 	// device and the virtual workspace defined for the tool
 	double workspaceScaleFactor = tool->getWorkspaceScaleFactor();//tool->getWorkspaceRadius() / Falcon.m_workspaceRadius;
-	// hapticDeviceInfo.m_workspaceRadius----->0.04
-	// stiffness properties
-	// retrieve information about the current haptic device
+																  // hapticDeviceInfo.m_workspaceRadius----->0.04
+																  // stiffness properties
+																  // retrieve information about the current haptic device
 	cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
 	double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;//Falcon.m_maxLinearStiffness / workspaceScaleFactor;
-	//std::cout << workspaceScaleFactor << " "<< hapticDeviceInfo.m_workspaceRadius << std::endl;	
+																					   //std::cout << workspaceScaleFactor << " "<< hapticDeviceInfo.m_workspaceRadius << std::endl;	
 	world->setGravity(0.0, 0.0, -9.8);
 	//120 is maxStiffness
-	ISS.mu_max = maxStiffness * ISS.stiff_factor;
-	WAVE.scaleFactor = workspaceScaleFactor;
-	
+
 
 	//////////////////////////////////////////////////////////////////////////
 	// 3 BULLET BLOCKS
@@ -917,7 +721,7 @@ int main(int argc, char* argv[])
 	matGround.setStaticFriction(0.0);
 	matGround.setWhite();
 	matGround.m_emission.setGrayLevel(0.3);
-	ground->setMaterial(matGround); 
+	ground->setMaterial(matGround);
 
 	// setup collision detector for haptic interaction
 	ground->createAABBCollisionDetector(toolRadius);
@@ -961,6 +765,8 @@ int main(int argc, char* argv[])
 	sender = new Sender<hapticMessageM2S>();
 	sender->Q = &forwardQ;
 	sender->s = sServer;
+	sender->AddrSize = AddrSize;
+	sender->SendAddr = SendAddr;
 	unsigned  uiThread1ID;
 	HANDLE hth1 = (HANDLE)_beginthreadex(NULL, // security
 		0,             // stack size
@@ -1085,61 +891,14 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	}
 
 	// option - toggle vertical mirroring
-	else if (a_key == GLFW_KEY_M)
-	{
-		std::cout << "MMT enabled" << std::endl;
-		MMT.enable = true;
-		MMT.Initialize();
-		world->setEnabled(true, true);
-		ATypeChange = AlgorithmType::AT_MMT;
-
-		ISS.ISS_enabled = false;
-		TDPA.TDPAon = false;
-	}
-
-	else if (a_key == GLFW_KEY_I) {
-		std::cout << "ISS enabled" << std::endl;
-		ISS.ISS_enabled = true;
-		ISS.Initialize();
-		ATypeChange = AlgorithmType::AT_ISS;
-
-		MMT.enable = false;
-		world->setEnabled(false, true);
-		TDPA.TDPAon = false;
-	}
-	else if (a_key == GLFW_KEY_T) {
-		std::cout << "TDPA enabled" << std::endl;
-		TDPA.TDPAon = true;
-		TDPA.Initialize();
-		ATypeChange = AlgorithmType::AT_TDPA;
-
-		MMT.enable = false;
-		world->setEnabled(false, true);
-		ISS.ISS_enabled = false;
-	}
 	else if (a_key == GLFW_KEY_N) {
 		std::cout << "None enabled" << std::endl;
-
-		MMT.enable = false;
 		world->setEnabled(false, true);
 		ATypeChange = AlgorithmType::AT_None;
-		TDPA.TDPAon = false;
-		ISS.ISS_enabled = false;
 	}
-	else if (a_key == GLFW_KEY_W) {
-		std::cout << "WAVE enabled" << std::endl;
-		WAVE.waveOn = true;
-		WAVE.Initialize();
-		ATypeChange = AlgorithmType::AT_WAVE;
 
-		MMT.enable = false;
-		world->setEnabled(false, true);		
-		TDPA.TDPAon = false;
-		ISS.ISS_enabled = false;
-	}
 	else if (a_key == GLFW_KEY_D) {
-		std::cout << "Dynamic Delay :"<< !sender->dynamicDelay << std::endl;
-
+		std::cout << "Dynamic Delay :" << !sender->dynamicDelay << std::endl;
 		sender->dynamicDelay = !sender->dynamicDelay;
 	}
 }
@@ -1155,14 +914,14 @@ void close(void)
 	while (!simulationFinished) { cSleepMs(100); }
 
 	// close haptic device
-	
+
 	tool->stop();
 	// delete resources
 	delete hapticsThread;
 	delete world;
 	delete handler;
 }
- 
+
 //------------------------------------------------------------------------------
 
 
@@ -1177,7 +936,7 @@ void updateHaptics(void)
 
 	char recData[1000];
 	unsigned int unprocessedPtr = 0;
-	
+
 	cPrecisionClock clock;
 	clock.reset();
 
@@ -1242,7 +1001,7 @@ void updateHaptics(void)
 			MasterPosition[i] = position(i);
 		}
 
-		
+
 
 		if (FlagVelocityKalmanFilter == 1) {
 			// Apply Kalman filtering to remove the noise on velocity signal
@@ -1263,19 +1022,6 @@ void updateHaptics(void)
 		DBVelocity->GetCurrentSample(MasterVelocity);
 		DBVelocity->ApplyZOHDeadband(MasterVelocity, &VelocityTransmitFlag);
 
-
-		ISS.VelocityRevise(MasterVelocity);
-		WAVE.getWave_l(WAVE.b, &WAVE.WV, cVector3d(MasterVelocity[0], MasterVelocity[1], MasterVelocity[2]));
-		double ul[3] = { WAVE.WV.ul.x(), WAVE.WV.ul.y(), WAVE.WV.ul.z() };
-
-		if (VelocityTransmitFlag == true) {
-			memcpy(TDPA.E_trans, TDPA.E_in, 3*sizeof(double));
-			memcpy(TDPA.E_in_last, TDPA.E_in, 3 * sizeof(double));
-		}
-		else
-		{
-			memcpy(TDPA.E_trans, TDPA.E_in_last, 3 * sizeof(double));
-		}
 
 #pragma region create message and send it
 		/////////////////////////////////////////////////////////////////////
@@ -1298,8 +1044,6 @@ void updateHaptics(void)
 		msgM2S.button2 = button2;
 		msgM2S.button3 = button3;
 		msgM2S.userSwitches = allSwitches;
-		memcpy(msgM2S.energy, TDPA.E_trans, 3 * sizeof(double));//modified by TDPA 
-		memcpy(msgM2S.waveVariable, ul, 3 * sizeof(double));
 
 		__int64 curtime;
 		QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
@@ -1318,15 +1062,15 @@ void updateHaptics(void)
 
 #pragma endregion
 
-		
+
 #pragma region check receive queues and apply force
 		/////////////////////////////////////////////////////////////////////
-// check receive queues.
-/////////////////////////////////////////////////////////////////////
+		// check receive queues.
+		/////////////////////////////////////////////////////////////////////
 		hapticMessageS2M msgS2M;
 
 
-		int ret = recv(sServer, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0);
+		int ret = recvfrom(sServer, recData + unprocessedPtr, sizeof(recData) - unprocessedPtr, 0, (SOCKADDR *)&RecvAddr, &AddrSize);
 		if (ret > 0) {
 			// we receive some char data and transform it to hapticMessageS2M.
 			// if receive more than one hapticMessageS2M, only save the last one.
@@ -1347,11 +1091,11 @@ void updateHaptics(void)
 				recData[i] = recData[processedPtr + i];
 			}
 		}
-		
+
 		if (forceQ.size()) {
 			msgS2M = forceQ.front();
 			forceQ.pop();
-			
+
 			QueryPerformanceCounter((LARGE_INTEGER *)&curtime);
 			delay = ((double)(curtime - msgS2M.timestamp) / (double)cpuFreq.QuadPart) * 1000;
 
@@ -1359,16 +1103,6 @@ void updateHaptics(void)
 			memcpy(MasterForce, msgS2M.force, 3 * sizeof(double));
 			memcpy(MasterTorque, msgS2M.torque, 3 * sizeof(double));
 			MasterGripperForce = msgS2M.gripperForce;
-			memcpy(TDPA.E_recv, msgS2M.energy, 3 * sizeof(double));
-			MMT.SlavePar.parPosition = cVector3d(msgS2M.MMTParameters[0], msgS2M.MMTParameters[1], msgS2M.MMTParameters[2]);
-			MMT.SlavePar.parStiffness = cVector3d(msgS2M.MMTParameters[3], msgS2M.MMTParameters[4], msgS2M.MMTParameters[5]);
-			MMT.SlavePar.Flag = msgS2M.MMTParameters[6];
-			
-			double vl[3];
-			memcpy(vl, msgS2M.waveVariable, 3 * sizeof(double));
-			WAVE.WV.vl = cVector3d(vl[0], vl[1], vl[2]);
-
-			
 
 			//orce filter (use dot(f) and tau)
 			if (FlagForceKalmanFilter)
@@ -1376,29 +1110,12 @@ void updateHaptics(void)
 				ForceKalmanFilter.ApplyKalmanFilter(MasterForce);
 				MasterForce[2] = ForceKalmanFilter.CurrentEstimation[2];
 			}
+		}
 
-			TDPA.ForceRevise(MasterVelocity, MasterForce);
-			ISS.ForceRevise(MasterForce);
-			WAVE.ForceRevise(MasterVelocity, &WAVE.WV, MasterForce);
-			
-			
-			
-		}
-		
-		if (MMT.SlavePar.Flag) {
-			//update master's enviroment
-			MMT.SlavePar.Flag = false;
-			bulletBox1->setLocalPos(MMT.SlavePar.parPosition);
-			MMT.MasterPar.parStiffness = MMT.SlavePar.parStiffness;
-			
-		}
 		tool->computeInteractionForces();
-		
-		cHapticPoint* p = tool->getHapticPoint(0);
-		MMT.ForceRevise(MasterForce, p->getLocalPosGoal(), p->getLocalPosProxy());
 
-		cVector3d force=cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]);
-		cVector3d torque=cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]);
+		cVector3d force = cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]);
+		cVector3d torque = cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]);
 		double gripperForce = MasterGripperForce;
 		tool->setDeviceLocalForce(force);
 		tool->setDeviceLocalTorque(torque);
@@ -1487,17 +1204,17 @@ void updateGraphics(void)
 	// update shadow maps (if any)
 	world->updateShadowMaps(false, mirroredDisplay);
 
-	char *ImgTemp = new char[864 * 270 * 8];
-	int ret = recv(sServer_Image, ImgTemp, 864 * 270 * 8, 0);
-	cImagePtr ImgPtr = cImage::create();
-	//ImgPtr->allocate(864, 270, GL_RGBA);
-	//ImgPtr->setSize();
-	ImgPtr->setData((unsigned char*)ImgTemp, ret, true);
-	ImgPtr->setProperties(864, 270, GL_RGBA, GL_UNSIGNED_BYTE);
-	bitmap->loadFromImage(ImgPtr);
-	// render world
+	//char *ImgTemp = new char[864 * 270 * 8];
+	//int ret = recvfrom(sServer_Image, ImgTemp, 864 * 270 * 8, 0, (SOCKADDR *)&RecvAddr_Image, &AddrSize);
+	//cImagePtr ImgPtr = cImage::create();
+	////ImgPtr->allocate(864, 270, GL_RGBA);
+	////ImgPtr->setSize();
+	//ImgPtr->setData((unsigned char*)ImgTemp, ret, true);
+	//ImgPtr->setProperties(864, 270, GL_RGBA, GL_UNSIGNED_BYTE);
+	//bitmap->loadFromImage(ImgPtr);
+	//// render world
 	camera->renderView(width, height);
-	ImgPtr->erase();
+	//ImgPtr->erase();
 	// wait until all OpenGL commands are completed
 	glFinish();
 

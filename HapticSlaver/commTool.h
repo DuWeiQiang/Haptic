@@ -137,7 +137,8 @@ class ThreadX
 public:
 	SOCKET s;
 	int N;
-
+	sockaddr_in SendAddr;
+	int AddrSize;
 	// In C++ you must employ a free (C) function or a static
 	// class member function as the thread entry-point-function.
 	ThreadX() {
@@ -201,7 +202,7 @@ private:
 				//std::cout << "Sender helloworld" << sizeof(hapticMessageM2S) << std::endl;
 
 
-				send(s, (char *)&temp, sizeof(T), 0);
+				sendto(s, (char *)&temp, sizeof(T), 0, (SOCKADDR *)&SendAddr, sizeof(SendAddr));
 			}
 			//std::this_thread::sleep_for(std::chrono::microseconds(500));
 		}
