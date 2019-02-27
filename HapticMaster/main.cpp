@@ -762,9 +762,11 @@ int main(int argc, char* argv[])
 
 	// create a font
 	font = NEW_CFONTCALIBRI20();
-
+	bitmap = new cBitmap();
+	camera->m_frontLayer->addChild(bitmap);
 	// create a label to display the haptic and graphic rate of the simulation
-	labelRates = new cLabel(font);
+	labelRates = new cLabel(font); 
+	labelRates->m_fontColor.set(0, 0, 0);
 	camera->m_frontLayer->addChild(labelRates);
 
 
@@ -945,8 +947,7 @@ int main(int argc, char* argv[])
 	ground->m_normalMap = normalMap0;
 	world->setEnabled(false, true);
 
-	bitmap = new cBitmap();
-	camera->m_frontLayer->addChild(bitmap);
+	
 
 	//--------------------------------------------------------------------------
 	// create message sender used to control delay and send message
