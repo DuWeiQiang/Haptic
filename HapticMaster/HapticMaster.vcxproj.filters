@@ -24,6 +24,9 @@
     <ClCompile Include="HapticCommLib.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="commTool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h">

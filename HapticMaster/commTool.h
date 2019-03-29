@@ -129,8 +129,27 @@ private:
 	std::condition_variable cond;
 };
 
+class Basethread
+{
 
+public:
+	// In C++ you must employ a free (C) function or a static
+	// class member function as the thread entry-point-function.
+	Basethread() {
+	}
+	int Init();
+	static unsigned __stdcall ThreadStaticEntryPoint(void * pThis);
 
+	virtual void ThreadEntryPoint();
+	virtual ~Basethread() {};
+};
+
+template<typename S, typename R>
+class Communicator :public Basethread
+{
+	SOCKET remoteSocket;
+	int Init(bool type, const char* addr, u_short remoteport, u_short myPort);
+};
 
 class ThreadX
 {
