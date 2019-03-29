@@ -198,6 +198,10 @@ void cBulletGenericObject::buildDynamicModel()
 
     // create rigid body
     btRigidBody::btRigidBodyConstructionInfo rigidBodyCI(mass, m_bulletMotionState, m_bulletCollisionShape, inertia);
+	if (m_bulletRigidBody) { 
+		m_dynamicWorld->m_bulletWorld->removeRigidBody(m_bulletRigidBody);
+		delete m_bulletRigidBody; 
+	}
     m_bulletRigidBody = new btRigidBody(rigidBodyCI);
 
     // by default deactivate sleeping mode

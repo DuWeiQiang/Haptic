@@ -49,8 +49,11 @@ POSSIBILITY OF SUCH DAMAGE.
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <iomanip>
+#include <Eigen/Core>
+#include <Eigen/Dense>  
 //------------------------------------------------------------------------------
 using namespace chai3d;
+using namespace Eigen;
 //using namespace std; //std namespace contains bind function which conflicts with socket bind function
 //------------------------------------------------------------------------------
 
@@ -96,14 +99,31 @@ public:
 	{
 		cVector3d parPosition;
 		cVector3d parStiffness;
+		double mass;//mass of cube
+		double FrictionF;//friction force of cube
 		bool Flag;//whether this parameters is used to update the master's enviroment
 	};
-	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-	cVector3d oldStiffness;
+	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),1,0 ,false };
+	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),1,0 ,true };
+	cVector3d oldStiffness = cVector3d(0, 0, 0);
+	cVector3d oldPosition = cVector3d(0, 0, 0);
+	double SlaveOldVelocity = 0;
+	double MasterOldVelocity = 0;
+	int MasterMoveDirection=0;
 	int length = 100;
-	int index = 0;
+	int index1 = 0;
+	bool full1 = false;
+	int index2 = 0;
+	bool full2 = false;
 	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
+	MatrixXf acc = MatrixXf::Ones(100, 2);
+	MatrixXf frictionforce = MatrixXf::Zero(100, 1);
+	MatrixXf x_jacobiSvd;
+
+	/*
+	dead band parameter
+	*/
+	double db = 0.1;
 
 	void ForceRevise(double* force, cVector3d goalPos, cVector3d proxyPos) {
 		if (!enable)return;
@@ -115,49 +135,89 @@ public:
 	}
 
 	void Initialize() {
-		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-		index = 0;
+		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),0,0 ,false };
+		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),0,0 ,true };
+		index1 = index2 = 0;
 		oldStiffness = cVector3d(0, 0, 0);
 		for (int i = 0; i < 100; i++) {
 			parStiffness[i] = cVector3d(0, 0, 0);
 		}
 	}
 
-	cVector3d Average(cVector3d temp) {
-		if (index < 100) {
-			parStiffness[index] = temp;
-			index += 1;
+	void Input(cVector3d PosGoal, cVector3d PosProxy, cVector3d force, int axis, cVector3d position, bool contact) {
+		SlavePar.parPosition = position;
+		for (int i = 0; i < 3; i++) {
+			double deltaX = PosGoal(i) - PosProxy(i);
+			if (deltaX) {
+				oldStiffness(i) = abs(force(i) / deltaX);
+			}
+		}
+
+		if (index1 < 100) {
+			parStiffness[index1] = oldStiffness;
+			index1 += 1;
 		}
 		else {
-			parStiffness[index % 100] = temp;
-			index = index % 100;
+			parStiffness[index1 % 100] = oldStiffness;
+			index1 = index1 % 100;
+			full1 = true;
 		}
+
 		cVector3d avg;
 		for (int i = 0; i < 100; i++) {
 			avg += parStiffness[i];
 		}
 		avg /= 100;
-		return avg;
+		SlavePar.parStiffness = avg;
+
+
+		double v = sqrt(pow((position(0) - oldPosition(0)), 2) + pow((position(1) - oldPosition(1)), 2) + pow((position(2) - oldPosition(2)), 2)) / 0.001;
+		if (!(v>0.1) || !contact)return;
+		std::cout << v << " " << contact << MMT.MasterPar.mass << "solution" << MMT.MasterPar.FrictionF << std::endl;
+		oldPosition = position;
+		double a = (v - SlaveOldVelocity) / 0.001;
+		SlaveOldVelocity = v;
+		if (index2 < 100) {
+			acc(index2, 0) = a;
+			frictionforce(index2, 0) = abs(force(axis));
+			index2 += 1;
+		}
+		else {
+			parStiffness[index2 % 100] = oldStiffness;
+			acc(index2 % 100, 0) = a;
+			frictionforce(index2 % 100, 0) = abs(force(axis));
+			index2 = index2 % 100;
+			full2 = true;
+		}
+
+
+		x_jacobiSvd = acc.jacobiSvd(ComputeThinU | ComputeThinV).solve(frictionforce);
+
+		SlavePar.mass = x_jacobiSvd(0, 0);
+		SlavePar.FrictionF = x_jacobiSvd(1, 0);
 	}
 
 	bool isTransmit() {
+		if (!full1 || (!full1 && !full2))return false;
 		for (int i = 0; i < 3; i++) {
 			// The threshold of  change rate is 10 percentage
-			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
+			if (abs(MasterPar.parStiffness(i) - SlavePar.parStiffness(i)) / SlavePar.parStiffness(i) > db)
 				return true;
 			// The threshold of  position offset is 0.1 meters
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i))> 0.5)
 				return true;
 		}
+		if (abs(MasterPar.mass - SlavePar.mass) / SlavePar.mass > db)
+			return true;
+
+		if (abs(MasterPar.FrictionF - SlavePar.FrictionF) / SlavePar.FrictionF > db)
+			return true;
 		return false;
 	}
 
-	/*
-	dead band parameter
-	*/
-	double db;
+
 }MMT;
+
 
 class WAVE_ALGORITHM {
 public:
@@ -308,7 +368,7 @@ public:
 	double tau = 0.005;
 	bool ISS_enabled = false;
 	double last_force[3] = { 0,0,0 };
-	float mu_factor = 1.7;
+	float mu_factor = 1.0;
 
 	void VelocityRevise(double* vel) {
 		if (ISS_enabled) {
@@ -853,7 +913,7 @@ int main(int argc, char* argv[])
 
 	// define some mass properties for each cube
 	bulletBox0->setMass(0.5);
-	bulletBox1->setMass(0.05);
+	bulletBox1->setMass(2);
 
 
 	// estimate their inertia properties
@@ -1094,6 +1154,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		world->setEnabled(true, true);
 		ATypeChange = AlgorithmType::AT_MMT;
 
+		WAVE.waveOn = false;
 		ISS.ISS_enabled = false;
 		TDPA.TDPAon = false;
 	}
@@ -1104,6 +1165,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		ISS.Initialize();
 		ATypeChange = AlgorithmType::AT_ISS;
 
+		WAVE.waveOn = false;
 		MMT.enable = false;
 		world->setEnabled(false, true);
 		TDPA.TDPAon = false;
@@ -1114,6 +1176,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 		TDPA.Initialize();
 		ATypeChange = AlgorithmType::AT_TDPA;
 
+		WAVE.waveOn = false;
 		MMT.enable = false;
 		world->setEnabled(false, true);
 		ISS.ISS_enabled = false;
@@ -1121,6 +1184,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
 	else if (a_key == GLFW_KEY_N) {
 		std::cout << "None enabled" << std::endl;
 
+		WAVE.waveOn = false;
 		MMT.enable = false;
 		world->setEnabled(false, true);
 		ATypeChange = AlgorithmType::AT_None;
@@ -1187,7 +1251,7 @@ void updateHaptics(void)
 	QueryPerformanceCounter((LARGE_INTEGER *)&beginTime);
 
 
-
+	
 	while (simulationRunning)
 	{
 		// compute global reference frames for each object
@@ -1363,7 +1427,10 @@ void updateHaptics(void)
 			memcpy(TDPA.E_recv, msgS2M.energy, 3 * sizeof(double));
 			MMT.SlavePar.parPosition = cVector3d(msgS2M.MMTParameters[0], msgS2M.MMTParameters[1], msgS2M.MMTParameters[2]);
 			MMT.SlavePar.parStiffness = cVector3d(msgS2M.MMTParameters[3], msgS2M.MMTParameters[4], msgS2M.MMTParameters[5]);
-			MMT.SlavePar.Flag = msgS2M.MMTParameters[6];
+			MMT.SlavePar.mass = msgS2M.MMTParameters[6];
+			MMT.SlavePar.FrictionF = msgS2M.MMTParameters[7];
+			
+			MMT.SlavePar.Flag = msgS2M.MMTParameters[8];
 			
 			double vl[3];
 			memcpy(vl, msgS2M.waveVariable, 3 * sizeof(double));
@@ -1389,21 +1456,30 @@ void updateHaptics(void)
 		if (MMT.SlavePar.Flag) {
 			//update master's enviroment
 			MMT.SlavePar.Flag = false;
-			bulletBox1->setLocalPos(MMT.SlavePar.parPosition);
-			MMT.MasterPar.parStiffness = MMT.SlavePar.parStiffness;
+			double Box_deltaY = MMT.SlavePar.parPosition.y() - bulletBox1->getLocalPos().y();
+			double Box_Haptic_deltaY = tool->getHapticPoint(0)->m_algorithmFingerProxy->getProxyGlobalPosition().y() - bulletBox1->getLocalPos().y();
+			//std::cout << deltaY << std::endl;
+			cVector3d Pos = tool->getHapticPoint(0)->getGlobalPosProxy();
+			if ((Box_deltaY < 0 && Box_Haptic_deltaY>0)|| (Box_deltaY > 0 && Box_Haptic_deltaY<0))Box_deltaY = -Box_deltaY;
+			Pos.y(Pos.y()+ Box_deltaY *10);
 			
+			bulletBox1->setLocalPos(MMT.SlavePar.parPosition);
+			tool->getHapticPoint(0)->m_algorithmFingerProxy->setProxyGlobalPosition(Pos);
+			//std::cout << tool->getHapticPoint(0)->getGlobalPosProxy()<< " " << tool->getHapticPoint(0)->getLocalPosProxy() << std::endl;
+			MMT.MasterPar = MMT.SlavePar;			
 		}
-		tool->computeInteractionForces();
 		
+		//tool->getHapticPoint(0)->m_algorithmFingerProxy->setProxyGlobalPosition(cVector3d(0,0,-10));
+		//std::cout << tool->getHapticPoint(0)->getGlobalPosProxy() << std::endl;
+		tool->computeInteractionForces();
+		//std::cout<< "hello" << tool->getHapticPoint(0)->getGlobalPosProxy() << std::endl;
 		cHapticPoint* p = tool->getHapticPoint(0);
 		MMT.ForceRevise(MasterForce, p->getLocalPosGoal(), p->getLocalPosProxy());
-
-		cVector3d force=cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]);
-		cVector3d torque=cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]);
-		double gripperForce = MasterGripperForce;
-		tool->setDeviceLocalForce(force);
-		tool->setDeviceLocalTorque(torque);
-		tool->setGripperForce(gripperForce);
+		//std::cout << p->getLocalPosProxy() - p->getLocalPosGoal() << std::endl;
+		
+		tool->setDeviceLocalForce(cVector3d(MasterForce[0], MasterForce[1], MasterForce[2]));
+		tool->setDeviceLocalTorque(cVector3d(MasterTorque[0], MasterTorque[1], MasterTorque[2]));
+		tool->setGripperForce(MasterGripperForce);
 		tool->applyToDevice();
 		/////////////////////////////////////////////////////////////////////
 		// SIMULATION TIME    
@@ -1422,40 +1498,47 @@ void updateHaptics(void)
 		/////////////////////////////////////////////////////////////////////
 		// DYNAMIC SIMULATION
 		/////////////////////////////////////////////////////////////////////
-
-		// for each interaction point of the tool we look for any contact events
-		// with the environment and apply forces accordingly
-		int numInteractionPoints = tool->getNumHapticPoints();
-		for (int i = 0; i<numInteractionPoints; i++)
-		{
-			// get pointer to next interaction point of tool
-			cHapticPoint* interactionPoint = tool->getHapticPoint(i);
-
-			// check all contact points
-			int numContacts = interactionPoint->getNumCollisionEvents();
-			for (int i = 0; i<numContacts; i++)
-			{
-				cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
-
-				// given the mesh object we may be touching, we search for its owner which
-				// could be the mesh itself or a multi-mesh object. Once the owner found, we
-				// look for the parent that will point to the Bullet object itself.
-				cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
-
-				// cast to Bullet object
-				cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
-
-				// if Bullet object, we apply interaction forces
-				if (bulletobject != NULL)
-				{
-					bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
-						collisionEvent->m_globalPos - object->getLocalPos());
+		if (!MMT.enable)continue;
+		cVector3d pos = bulletBox1->getLocalPos();
+		if (tool->getHapticPoint(0)->getNumCollisionEvents()) {
+			cBulletBox* bulletobject = dynamic_cast<cBulletBox*>(tool->getHapticPoint(0)->getCollisionEvent(0)->m_object->getOwner()->getOwner());
+			if (bulletobject != NULL) {
+				if (abs(pos.y() - tool->getHapticPoint(0)->getGlobalPosProxy().y()) < 0.25) {
+					memset(MasterForce, 0, 3 * sizeof(double));
 				}
 			}
+			else {
+				memset(MasterForce, 0, 3 * sizeof(double));
+			}
 		}
+		else {
+			memset(MasterForce, 0, 3 * sizeof(double));
+		}
+		
+		double a = (abs(MasterForce[1]) - MMT.MasterPar.FrictionF) / MMT.MasterPar.mass;
+		MMT.MasterOldVelocity += a*0.001;
+		//std::cout << MasterForce[1] << " " << MMT.MasterPar.FrictionF << " " << MMT.MasterPar.mass << " " << a << " " << MMT.MasterOldVelocity << std::endl;
+		if (MasterForce[1] < 0)
+			MMT.MasterMoveDirection = 1;
+		else if(MasterForce[1] > 0)
+			MMT.MasterMoveDirection = -1;
+		if (MMT.MasterOldVelocity > 0.00000000000001) {
+			double s = MMT.MasterOldVelocity*0.001;
 
-		// update simulation
-		world->updateDynamics(timeInterval);
+			if (MasterForce[1] < 0) {
+				pos.y(pos.y() + MMT.MasterMoveDirection*s);
+			}
+			else {
+				pos.y(pos.y() + MMT.MasterMoveDirection*s);
+			};
+		}
+		else {
+			MMT.MasterOldVelocity = 0;
+		}
+			
+
+		
+		bulletBox1->setLocalPos(pos);
 #pragma endregion
 
 

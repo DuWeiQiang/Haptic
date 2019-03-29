@@ -103,8 +103,7 @@ cLabel* labelRates;
 cBulletWorld* bulletWorld;
 
 // bullet objects
-cBulletBox* bulletBox0;
-cBulletBox* bulletBox1;
+
 cBulletBox* bulletBox2;
 
 // bullet static walls and ground
@@ -170,7 +169,8 @@ void updateHaptics(void);
 // this function closes the application
 void close(void);
 
-
+double mass = 0;
+double friction = 0;
 //===========================================================================
 /*
     DEMO:    01-bullet-cube.cpp
@@ -425,12 +425,9 @@ int main(int argc, char* argv[])
     //////////////////////////////////////////////////////////////////////////
     double size = 0.4;
 
-    // create three objects that are added to the world
-    bulletBox0 = new cBulletBox(bulletWorld, size, size, size);
-    bulletWorld->addChild(bulletBox0);
 
-    bulletBox1 = new cBulletBox(bulletWorld, size, size, size);
-    bulletWorld->addChild(bulletBox1);
+
+
 
     bulletBox2 = new cBulletBox(bulletWorld, size, size, size);
     bulletWorld->addChild(bulletBox2);
@@ -441,63 +438,67 @@ int main(int argc, char* argv[])
     mat0.setStiffness(0.3 * maxStiffness);
     mat0.setDynamicFriction(0.6);
     mat0.setStaticFriction(0.6);
-    bulletBox0->setMaterial(mat0);
+
 
     mat1.setBlueRoyal();
     mat1.setStiffness(0.3 * maxStiffness);
-    mat1.setDynamicFriction(0.6);
-    mat1.setStaticFriction(0.6);
-    bulletBox1->setMaterial(mat1);
+
+
 
     mat2.setGreenDarkSea();
     mat2.setStiffness(0.3 * maxStiffness);
-    mat2.setDynamicFriction(0.6);
-    mat2.setStaticFriction(0.6);
+
     bulletBox2->setMaterial(mat2);
+	mass = 0.2;
 
-    // define some mass properties for each cube
-    bulletBox0->setMass(0.05);
-    bulletBox1->setMass(0.05);
-    bulletBox2->setMass(0.05);
 
-    // estimate their inertia properties
-    bulletBox0->estimateInertia();
-    bulletBox1->estimateInertia();
+    bulletBox2->setMass(mass);
+
+
     bulletBox2->estimateInertia();
 
     // create dynamic models
-    bulletBox0->buildDynamicModel();
-    bulletBox1->buildDynamicModel();
+
     bulletBox2->buildDynamicModel();
 
     // create collision detector for haptic interaction
-    bulletBox0->createAABBCollisionDetector(toolRadius);
-    bulletBox1->createAABBCollisionDetector(toolRadius);
+
     bulletBox2->createAABBCollisionDetector(toolRadius);
 
     // set friction values
-    bulletBox0->setSurfaceFriction(0.4);
-    bulletBox1->setSurfaceFriction(0.4);
-    bulletBox2->setSurfaceFriction(0.4);
+
+	friction = 0.4;
+    bulletBox2->setSurfaceFriction(friction);
 
     // set position of each cube
-    bulletBox0->setLocalPos(0.0,-0.6, 0.5);
-    bulletBox1->setLocalPos(0.0, 0.6, 0.5);
+
     bulletBox2->setLocalPos(0.0, 0.0, 0.5);
 
     // rotate central cube 45 degrees around z-axis
-    bulletBox0->rotateAboutGlobalAxisDeg(0,0,1, 45);
 
 
+	bulletBox2->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+	bulletBox2->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
     //////////////////////////////////////////////////////////////////////////
     // INVISIBLE WALLS
     //////////////////////////////////////////////////////////////////////////
 
     // we create 5 static walls to contain the dynamic objects within a limited workspace
     double planeWidth = 1.0;
+	cMaterial matGround;
+	matGround.setStiffness(0.3 * maxStiffness);
+
+	matGround.setBlack();
+	matGround.m_emission.setGrayLevel(0.3);
     bulletInvisibleWall1 = new cBulletStaticPlane(bulletWorld, cVector3d(0.0, 0.0, -1.0), -2.0 * planeWidth);
     bulletInvisibleWall2 = new cBulletStaticPlane(bulletWorld, cVector3d(0.0, -1.0, 0.0), -planeWidth);
+	bulletWorld->addChild(bulletInvisibleWall2);
+	cCreatePlane(bulletInvisibleWall2, 3.0, 3.0, bulletInvisibleWall2->getPlaneConstant() * bulletInvisibleWall2->getPlaneNormal());
+	bulletInvisibleWall2->setMaterial(matGround);
     bulletInvisibleWall3 = new cBulletStaticPlane(bulletWorld, cVector3d(0.0, 1.0, 0.0), -planeWidth);
+	bulletWorld->addChild(bulletInvisibleWall3);
+	cCreatePlane(bulletInvisibleWall3, 3.0, 3.0, bulletInvisibleWall3->getPlaneConstant() * bulletInvisibleWall3->getPlaneNormal());
+	bulletInvisibleWall3->setMaterial(matGround);
     bulletInvisibleWall4 = new cBulletStaticPlane(bulletWorld, cVector3d(-1.0, 0.0, 0.0), -planeWidth);
     bulletInvisibleWall5 = new cBulletStaticPlane(bulletWorld, cVector3d(1.0, 0.0, 0.0), -0.8 * planeWidth);
 
@@ -516,11 +517,10 @@ int main(int argc, char* argv[])
     cCreatePlane(bulletGround, 3.0, 3.0, bulletGround->getPlaneConstant() * bulletGround->getPlaneNormal());
 
     // define some material properties and apply to mesh
-    cMaterial matGround;
+
     matGround.setStiffness(0.3 * maxStiffness);
-    matGround.setDynamicFriction(0.2);
-    matGround.setStaticFriction(0.0);
-    matGround.setWhite();
+
+    matGround.setBlack();
     matGround.m_emission.setGrayLevel(0.3);
     bulletGround->setMaterial(matGround);
 
@@ -528,7 +528,7 @@ int main(int argc, char* argv[])
     bulletGround->createAABBCollisionDetector(toolRadius);
 
     // set friction values
-    bulletGround->setSurfaceFriction(0.4);
+    bulletGround->setSurfaceFriction(1);
 
 
     //-----------------------------------------------------------------------
@@ -659,6 +659,36 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         mirroredDisplay = !mirroredDisplay;
         camera->setMirrorVertical(mirroredDisplay);
     }
+	else if (a_key == GLFW_KEY_1)
+	{
+		bulletBox2->setMass((bulletBox2->getMass() + 1));
+		bulletBox2->buildDynamicModel();
+		friction = bulletBox2->getSurfaceFriction();
+		bulletBox2->setSurfaceFriction(friction);
+		bulletBox2->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+		bulletBox2->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
+		mass = bulletBox2->getMass();
+	}
+	else if (a_key == GLFW_KEY_2)
+	{
+		bulletBox2->setMass((bulletBox2->getMass() - 1));
+		bulletBox2->buildDynamicModel();
+		friction = bulletBox2->getSurfaceFriction();
+		bulletBox2->setSurfaceFriction(friction);
+		bulletBox2->m_bulletRigidBody->setLinearFactor(btVector3(0, 1, 1));
+		bulletBox2->m_bulletRigidBody->setAngularFactor(btVector3(0, 0, 0));
+		mass = bulletBox2->getMass();
+	}
+	else if (a_key == GLFW_KEY_3)
+	{
+		bulletBox2->setSurfaceFriction((bulletBox2->getSurfaceFriction() + 0.1));
+		friction = bulletBox2->getSurfaceFriction();
+	}
+	else if (a_key == GLFW_KEY_4)
+	{
+		bulletBox2->setSurfaceFriction((bulletBox2->getSurfaceFriction() - 0.1));
+		friction = bulletBox2->getSurfaceFriction();
+	}
 }
 
 //---------------------------------------------------------------------------
@@ -689,8 +719,8 @@ void updateGraphics(void)
     /////////////////////////////////////////////////////////////////////
 
     // update haptic and graphic rate data
-    labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
-        cStr(freqCounterHaptics.getFrequency(), 0) + " Hz");
+    labelRates->setText(cStr(mass, 1) + " Hz / " +
+        cStr(friction, 1) + " Hz");
 
     // update position of label
     labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
@@ -801,6 +831,8 @@ void updateHaptics(void)
 
         // update simulation
         bulletWorld->updateDynamics(timeInterval);
+		btVector3 force = bulletBox2->m_bulletRigidBody->getTotalForce();
+		std::cout<< (cVector3d(force[0], force[1], force[2])+ tool->getDeviceLocalForce())/(mass*9.8)<<std::endl;
     }
 
     // exit haptics thread

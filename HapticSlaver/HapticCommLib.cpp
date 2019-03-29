@@ -154,9 +154,9 @@ void DeadbandDataReduction::ApplyZOHDeadband(double* updatedSample,bool* Transmi
 
 KalmanFilter::KalmanFilter() {
 
-	NoiseVar[0] = 200.0;
-	NoiseVar[1] = 200.0;
-	NoiseVar[2] = 200.0;
+	NoiseVar[0] = 300.0;
+	NoiseVar[1] = 300.0;
+	NoiseVar[2] = 300.0;
 
 	ProcNoiseVar[0] = 1.0;
 	ProcNoiseVar[1] = 1.0;

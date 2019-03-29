@@ -43,6 +43,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "commTool.h"
 #include "config.h"
 #include "HapticCommLib.h"
+
+#include <Eigen/Core>
+#include <Eigen/Dense>
 //------------------------------------------------------------------------------
 #include "chai3d.h"
 #include "CBullet.h"
@@ -52,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include<fstream>
 //------------------------------------------------------------------------------
 using namespace chai3d;
+using namespace Eigen;
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 // Read Parameters from configuration file
@@ -88,64 +92,127 @@ public:
 	{
 		cVector3d parPosition;
 		cVector3d parStiffness;
+		double mass;//mass of cube
+		double FrictionF;//friction force of cube
 		bool Flag;//whether this parameters is used to update the master's enviroment
 	};
-	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-	cVector3d oldStiffness;
+	envPar MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),0,0 ,false };
+	envPar SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),0,0 ,true };
+	cVector3d oldStiffness = cVector3d(0, 0, 0);
+	cVector3d oldPosition = cVector3d(0, 0, 0);
+	double SlaveOldVelocity = 0;
+	double MasterOldVelocity = 0;
+	int MasterMoveDirection = 0;
 	int length = 100;
-	int index = 0;
+	int index1 = 0;
+	bool full1 = false;
+	int index2 = 0;
+	bool full2 = false;
 	cVector3d parStiffness[100];//store parameter K used to calculate the average K value.
+	MatrixXf acc = -1*MatrixXf::Ones(100, 2);
+	MatrixXf frictionforce = MatrixXf::Zero(100, 1);
+	MatrixXf x_jacobiSvd;
 
-	void ForceRevise(cVector3d &force, cVector3d goalPos, cVector3d proxyPos) {
+	/*
+	dead band parameter
+	*/
+	double db = 0.1;
+
+	void ForceRevise(double* force, cVector3d goalPos, cVector3d proxyPos) {
 		if (!enable)return;
-		force = MasterPar.parStiffness;
-		force.mulElement(proxyPos - goalPos);
+		cVector3d Temp = MasterPar.parStiffness;
+		Temp.mulElement(proxyPos - goalPos);
+		force[0] = Temp(0);
+		force[1] = Temp(1);
+		force[2] = Temp(2);
 	}
 
 	void Initialize() {
-		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,false };
-		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0) ,true };
-		index = 0;
+		MasterPar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),1,0 ,false };
+		SlavePar = { cVector3d(0, 0, 0) ,cVector3d(0, 0, 0),1,0 ,true };
+		index1 = index2 = 0;
 		oldStiffness = cVector3d(0, 0, 0);
 		for (int i = 0; i < 100; i++) {
 			parStiffness[i] = cVector3d(0, 0, 0);
 		}
 	}
 
-	cVector3d Average(cVector3d temp) {
-		if (index < 100) {
-			parStiffness[index] = temp;
-			index += 1;
+	void Input(cVector3d PosGoal, cVector3d PosProxy, cVector3d force, int axis, cVector3d position, bool contact) {
+		SlavePar.parPosition = position;
+		for (int i = 0; i < 3; i++) {
+			double deltaX = PosGoal(i) - PosProxy(i);
+			if (deltaX) {
+				oldStiffness(i) = abs(force(i) / deltaX);
+			}
+		}
+
+		if (index1 < 100) {
+			parStiffness[index1] = oldStiffness;
+			index1 += 1;
 		}
 		else {
-			parStiffness[index % 100] = temp;
-			index = index % 100;
+			parStiffness[index1 % 100] = oldStiffness;
+			index1 = index1 % 100;
+			full1 = true;
 		}
+
 		cVector3d avg;
 		for (int i = 0; i < 100; i++) {
 			avg += parStiffness[i];
 		}
 		avg /= 100;
-		return avg;
+		SlavePar.parStiffness = avg;
+
+
+		double v = (position(1) - oldPosition(1) )/0.001;
+		oldPosition = position;		
+		double a = (v - SlaveOldVelocity) / 0.001;
+		SlaveOldVelocity = v;
+		if (!(abs(a)>0) || !(abs(v)>0) || !contact)return;
+		//std::cout << sqrt(pow((position(1) - oldPosition(1)), 2)) / 0.001 << " " << v << std::endl;
+		
+		
+		std::cout<< a << " "<< SlaveOldVelocity << " " << v << " " << position(1) << " " << oldPosition(1) <<  " " << (force(axis)) << " " << MMT.MasterPar.mass << "solution" << MMT.MasterPar.FrictionF << std::endl;
+		//std::cout << MMT.MasterPar.mass << " " << MMT.MasterPar.FrictionF << std::endl;
+		if (index2 < 100) {
+			acc(index2, 0) = a;
+			frictionforce(index2, 0) = (force(axis));
+			index2 += 1;
+		}
+		else {
+			parStiffness[index2 % 100] = oldStiffness;
+			acc(index2 % 100, 0) = a;
+			frictionforce(index2 % 100, 0) = (force(axis));
+			index2 = index2 % 100;
+			full2 = true;
+		}
+
+
+		x_jacobiSvd = acc.jacobiSvd(ComputeThinU | ComputeThinV).solve(frictionforce);
+
+		SlavePar.mass = x_jacobiSvd(0, 0);
+		SlavePar.FrictionF = abs(x_jacobiSvd(1, 0));
 	}
 
 	bool isTransmit() {
+		if (!full1 || (!full1&&!full2))return false;
 		for (int i = 0; i < 3; i++) {
 			// The threshold of  change rate is 10 percentage
-			if (abs(1 - SlavePar.parStiffness(i) / MasterPar.parStiffness(i)) > 0.1)
+			if (abs(MasterPar.parStiffness(i) - SlavePar.parStiffness(i)) / SlavePar.parStiffness(i) > db)
 				return true;
 			// The threshold of  position offset is 0.1 meters
-			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i)) > 0.1)
-				return true;
+			if (abs(MasterPar.parPosition(i) - SlavePar.parPosition(i))> 0.1)
+				return true;			
 		}
+		if (abs(MasterPar.mass - SlavePar.mass)/ SlavePar.mass > db)
+			return true;
+
+		if (abs(MasterPar.FrictionF - SlavePar.FrictionF)/ SlavePar.FrictionF > db)
+			return true;
 		return false;
 	}
 
-	/*
-	dead band parameter
-	*/
-	double db;
+
 }MMT;
 
 class WAVE_ALGORITHM {
@@ -898,7 +965,7 @@ int main(int argc, char* argv[])
 
 	// define some mass properties for each cube
 	bulletBox0->setMass(0.5);
-	bulletBox1->setMass(0.05);
+	bulletBox1->setMass(2);
 	
 
 	// estimate their inertia properties
@@ -1108,7 +1175,7 @@ int main(int argc, char* argv[])
 
 	// define some mass properties for each cube
 	bulletBox0_MMT->setMass(0.5);
-	bulletBox1_MMT->setMass(0.05);
+	bulletBox1_MMT->setMass(2);
 
 	// estimate their inertia properties
 	bulletBox0_MMT->estimateInertia();
@@ -1512,42 +1579,50 @@ void updateHaptics(void)
 			/////////////////////////////////////////////////////////////////////
 			// COMPUTE AND APPLY FORCES
 			/////////////////////////////////////////////////////////////////////
-
-			// compute interaction forces
 			tool_MMT->computeInteractionForces();
+			cVector3d pos = bulletBox1_MMT->getLocalPos();
+			cHapticPoint* p = tool_MMT->getHapticPoint(0);
+			double force[3];
+			MMT.ForceRevise(force, p->getLocalPosGoal(), p->getLocalPosProxy());
 
-			int numInteractionPoints = tool_MMT->getNumHapticPoints();
-			for (int i = 0; i<numInteractionPoints; i++)
-			{
-				// get pointer to next interaction point of tool
-				cHapticPoint* interactionPoint = tool_MMT->getHapticPoint(i);
-
-				// check all contact points
-				int numContacts = interactionPoint->getNumCollisionEvents();
-				for (int i = 0; i<numContacts; i++)
-				{
-					cCollisionEvent* collisionEvent = interactionPoint->getCollisionEvent(i);
-
-					// given the mesh object we may be touching, we search for its owner which
-					// could be the mesh itself or a multi-mesh object. Once the owner found, we
-					// look for the parent that will point to the Bullet object itself.
-					cGenericObject* object = collisionEvent->m_object->getOwner()->getOwner();
-
-					// cast to Bullet object
-					cBulletGenericObject* bulletobject = dynamic_cast<cBulletGenericObject*>(object);
-
-					// if Bullet object, we apply interaction forces
-					if (bulletobject != NULL)
-					{
-						bulletobject->addExternalForceAtPoint(-interactionPoint->getLastComputedForce(),
-							collisionEvent->m_globalPos - object->getLocalPos());
+			if (tool_MMT->getHapticPoint(0)->getNumCollisionEvents()) {
+				cBulletBox* bulletobject = dynamic_cast<cBulletBox*>(tool_MMT->getHapticPoint(0)->getCollisionEvent(0)->m_object->getOwner()->getOwner());
+				if (bulletobject != NULL) {
+					if (abs(pos.y() - tool_MMT->getHapticPoint(0)->getGlobalPosProxy().y()) < 0.25) {
+						memset(force, 0, 3 * sizeof(double));
 					}
 				}
+				else {
+					memset(force, 0, 3 * sizeof(double));
+				}
+			}
+			else {
+				memset(force, 0, 3 * sizeof(double));
 			}
 
-			// update simulation
-			world_MMT->updateDynamics(0.001);
+			double a = (abs(force[1]) - MMT.MasterPar.FrictionF) / MMT.MasterPar.mass;
+			MMT.MasterOldVelocity += a*0.001;
+			//std::cout << MasterForce[1] << " " << MMT.MasterPar.FrictionF << " " << MMT.MasterPar.mass << " " << a << " " << MMT.MasterOldVelocity << std::endl;
+			if (force[1] < 0)
+				MMT.MasterMoveDirection = 1;
+			else if (force[1] > 0)
+				MMT.MasterMoveDirection = -1;
+			if (MMT.MasterOldVelocity > 0.00000000000001) {
+				double s = MMT.MasterOldVelocity*0.001;
 
+				if (force[1] < 0) {
+					pos.y(pos.y() + MMT.MasterMoveDirection*s);
+				}
+				else {
+					pos.y(pos.y() + MMT.MasterMoveDirection*s);
+				};
+			}
+			else {
+				MMT.MasterOldVelocity = 0;
+			}
+
+
+			bulletBox1_MMT->setLocalPos(pos);
 			MMT.MasterPar.parPosition = bulletBox1_MMT->getLocalPos();
 			
 
@@ -1705,7 +1780,9 @@ void updateHaptics(void)
 				MMTParameters = MMT.SlavePar;
 				MMT.MasterPar = MMT.SlavePar;
 				MMT.MasterPar.Flag = false;
+				
 				bulletBox1_MMT->setLocalPos(MMT.SlavePar.parPosition);
+			    
 			}
 			else {
 				MMTParameters = MMT.MasterPar;				
@@ -1742,7 +1819,9 @@ void updateHaptics(void)
 				msgS2M.MMTParameters[i] = MMTParameters.parPosition(i);
 				msgS2M.MMTParameters[i+3] = MMTParameters.parStiffness(i);
 			}
-			msgS2M.MMTParameters[6] = MMTParameters.Flag;
+			msgS2M.MMTParameters[6] = MMTParameters.mass;
+			msgS2M.MMTParameters[7] = MMTParameters.FrictionF;
+			msgS2M.MMTParameters[8] = MMTParameters.Flag;
 			msgS2M.gripperForce = gripperForce;
 			memcpy(msgS2M.energy, TDPA.E_trans, 3 * sizeof(double));
 			memcpy(msgS2M.waveVariable, ur, 3 * sizeof(double));
@@ -1773,6 +1852,7 @@ void updateHaptics(void)
 		/////////////////////////////////////////////////////////////////////
 		// DYNAMIC SIMULATION
 		/////////////////////////////////////////////////////////////////////
+
 
 		// for each interaction point of the tool we look for any contact events
 		// with the environment and apply forces accordingly
@@ -1805,19 +1885,17 @@ void updateHaptics(void)
 			}
 		}
 
+
 		// update simulation
 		world->updateDynamics(timeInterval);
-		MMT.SlavePar.parPosition = bulletBox1->getLocalPos();
 		cHapticPoint* p = tool->getHapticPoint(0);
-		
-		for (int i = 0; i < 3; i++) {
-			double deltaX = p->getLocalPosGoal()(i) - p->getLocalPosProxy()(i);
-			if (deltaX) {
-				MMT.oldStiffness(i) = abs(p->getLastComputedForce()(i) / deltaX);
-			}			
+		bool contact = false;
+		if (tool->getHapticPoint(0)->getNumCollisionEvents()) {
+			cBulletBox* bulletobject = dynamic_cast<cBulletBox*>(tool->getHapticPoint(0)->getCollisionEvent(0)->m_object->getOwner()->getOwner());
+			if (bulletobject != NULL)contact = true;
 		}
-		//MMT.oldStiffness = cTransform(tool->getGlobalRot())*MMT.oldStiffness;
-		MMT.SlavePar.parStiffness = MMT.Average(MMT.oldStiffness);
+
+		MMT.Input(p->getLocalPosGoal(), p->getLocalPosProxy(), -p->getLastComputedForce(),1, bulletBox1->getLocalPos(), contact);
 	}
 
 	// exit haptics thread
